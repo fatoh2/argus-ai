@@ -1,4 +1,4 @@
-# Argus AI — Your Autonomous Infrastructure Assistant
+# Argus AI
 
 Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Anthropic's Claude API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
@@ -12,9 +12,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 ## Demo
 
-![Demo GIF Placeholder](https://via.placeholder.com/800x450?text=Demo+GIF+Coming+Soon)
-
-## Supported Connectors
+[Link to demo video/gif]
 
 Argus AI currently supports read-only integration with:
 
@@ -29,13 +27,18 @@ Argus AI currently supports read-only integration with:
 
 This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s cluster and start querying within 10 minutes.
 
+<<<<<<< HEAD
 1.  **Prerequisites**: Ensure you have `git`, Node.js (v18+), and npm installed.
+=======
+1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
 
 2.  **Clone the repository and initialize submodules**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
     git submodule update --init --recursive
+<<<<<<< HEAD
     ```
     *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
 
@@ -44,6 +47,21 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```bash
     cp config.example.yaml config.yaml
     ```
+=======
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
+    ```
+
+3.  **Configure your connectors**:
+    Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
+    ```bash\n    cp config.example.yaml config.yaml\n    ```
+    ```bash\n    cp config.example.yaml config.yaml\n    ```
+    ```bash\n    cp config.example.yaml config.yaml\n    ```
+    ```bash\n    cp config.example.yaml config.yaml\n    ```
+
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
     **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
@@ -71,6 +89,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```
 
     Refer to [Example Queries](docs/examples.md) for more example queries.
+<<<<<<< HEAD
 
 **Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
 
@@ -81,9 +100,28 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 - **Least Privilege Access**: Connectors are designed to operate with the minimum necessary permissions, adhering to the principle of least privilege to limit potential impact of compromise.
 - **Read-Only Operations**: Argus AI is strictly read-only. It will never execute commands or modify your infrastructure, ensuring a safe diagnostic and monitoring environment.
 - **Auditable Interactions**: All interactions and queries are logged for auditing and compliance purposes.
+=======
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
 
-## Contributing
+**Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
 
+## Security Best Practices
+
+## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+
+## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+
+## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+
+## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+
+## Auto-update rule
+When any PR merges to this repo, update relevant docs to reflect the changes.
+
+## Done when
+Any DevOps team can point argus-ai at their Prometheus+Loki+K8s cluster and query it within 10 minutes.
+
+<<<<<<< HEAD
 We welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.
 
 ## License
@@ -95,3 +133,5 @@ When any PR merges to this repo, update relevant docs to reflect the changes.
 
 ## Done when
 Any DevOps team can point argus-ai at their Prometheus+Loki+K8s cluster and query it within 10 minutes.
+=======
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
