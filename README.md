@@ -36,6 +36,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
+    git submodule update --init --recursive
     ```
 
 3.  **Configure your connectors**:
@@ -44,7 +45,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
-    For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs and any necessary authentication details (e.g., `kubeconfig_path` for Kubernetes if not running in-cluster).
+    For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
 
 4.  **Install dependencies**:
     ```bash
