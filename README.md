@@ -27,55 +27,39 @@ Argus AI currently supports read-only integration with:
 - **Argus Monitor (Optional)**: Alerts and wallet activity from the Argus Monitor platform.
 
 ## Quickstart
-This repository includes the `argus-ai` submodule, which contains the core backend application logic. It is designed to be a self-contained service that can be deployed independently or as part of a larger system.
+
+This repository includes the `argus-ai` submodule, which contains the core backend application logic for the AI assistant. It is designed to be a self-contained service that can be deployed independently or as part of a larger system.
 
 1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
 
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/fatoh2/argus-ai.git
-   cd argus-ai
-   ```
-2. Configure your connectors (e.g., Claude API key):
-   Set your environment variables (e.g., `ANTHROPIC_API_KEY`) in your shell or a `.env` file.
-   ```dotenv
-   ```
-3. Install dependencies:
-   ```bash
-   npm install
-   ```
-4. Run locally:
-   ```bash
-   npm run start:dev
-   ```
-
-To get Argus AI up and running in your environment:
-
-1.  **Clone the repository**:
+2.  **Clone the repository and initialize submodule**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
+    git submodule update --init --recursive
     ```
-2.  **Configure your connectors**:
-    Copy `config.example.yaml` to `config.yaml` and fill in your API endpoints and credentials.
-    Sensitive fields in `config.example.yaml` are configured via environment variables (e.g., `${ENV_VAR_NAME}`). Set these in your environment or a `.env` file.
+
+3.  **Configure your connectors**:
+    Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
     ```bash
     cp config.example.yaml config.yaml
     ```
-    **Never commit `config.yaml` to Git!**
-3.  **Install dependencies**:
+    **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
+    **Never commit `config.yaml` to Git if it contains sensitive information!**
+
+4.  **Install dependencies**:
     ```bash
     npm install
     ```
-4.  **Run locally (for development/testing)**:
+
+5.  **Run locally (for development/testing)**:
     ```bash
     npm run start:dev
     ```
-    This will start the NestJS backend and the React chat UI.
-5.  **Deploy to Kubernetes**:
-    Refer to the [Deployment Guide](docs/deployment.md) for production deployment instructions using the provided Helm chart.
+    This will start the NestJS backend.
 
 For detailed configuration, connector setup, and example queries, please refer to the `docs/` directory.
+
 
 ## Security Best Practices
 
