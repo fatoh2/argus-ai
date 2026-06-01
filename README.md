@@ -31,7 +31,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
 1.  **Prerequisites**: Ensure you have `git`, Node.js (v18+), and npm installed.
 
-2.  **Clone the repository and initialize submodule**:
+2.  **Clone the repository and initialize submodules**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
