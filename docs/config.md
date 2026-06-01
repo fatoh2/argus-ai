@@ -17,6 +17,8 @@ Argus AI performs basic validation on API keys and tokens to ensure their presen
 Environment variables are securely loaded and validated by the application to prevent injection attacks.
 
 Sensitive information like API keys should ideally be provided via environment variables, especially in production environments.bles, especially in production environments.bles, especially in production environments.bles, especially in production environments.bles, especially in production environments. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
+Values provided via environment variables will override those specified directly in `config.yaml` if both are present.
+
 
 Example:
 
@@ -71,7 +73,7 @@ Remember to copy this to `config.yaml` and fill in your actual values.
 
 ```yaml
 claude:
-  api_key: "<ANTHROPIC_API_KEY_HERE>"
+  api_key: "${ANTHROPIC_API_KEY}"
   model: "claude-3-sonnet-20240229"
 
 kubernetes:
@@ -89,11 +91,11 @@ loki:
 
 argocd:
   url: "https://argocd.example.com"
-  token: "<ARGOCD_AUTH_TOKEN_HERE>"
+  token: "${ARGOCD_AUTH_TOKEN}"
 
 github_actions:
-  token: "<GITHUB_TOKEN_HERE>"
+  token: "${GITHUB_TOKEN}"
 
 argus_monitor:
-  database_url: "<ARGUS_MONITOR_DB_URL_HERE>"
+  database_url: "${ARGUS_MONITOR_DB_URL}"
 ```

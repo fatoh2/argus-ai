@@ -2,6 +2,8 @@
 
 Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Anthropic's Claude API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
+- **Submodule Integration**: The `argus-ai` submodule contains the core backend logic and API for the AI assistant, allowing for modular development and deployment.
+
 ## Features
 
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
