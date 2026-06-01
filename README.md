@@ -37,6 +37,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     cd argus-ai
     git submodule update --init --recursive
     ```
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
 
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
