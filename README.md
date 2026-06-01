@@ -1,4 +1,4 @@
-# Argus AI
+# Argus AI — Your Autonomous Infrastructure Assistant
 
 Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Anthropic's Claude API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
@@ -12,7 +12,9 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 ## Demo
 
-[Link to demo video/gif]
+![Demo GIF Placeholder](https://via.placeholder.com/800x450?text=Demo+GIF+Coming+Soon)
+
+## Supported Connectors
 
 Argus AI currently supports read-only integration with:
 
@@ -27,26 +29,21 @@ Argus AI currently supports read-only integration with:
 
 This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s cluster and start querying within 10 minutes.
 
-1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
+1.  **Prerequisites**: Ensure you have `git`, Node.js (v18+), and npm installed.
 
 2.  **Clone the repository and initialize submodules**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
     git submodule update --init --recursive
-    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
-    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
-    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
-    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
     ```
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
 
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
-    ```bash\n    cp config.example.yaml config.yaml\n    ```
-    ```bash\n    cp config.example.yaml config.yaml\n    ```
-    ```bash\n    cp config.example.yaml config.yaml\n    ```
-    ```bash\n    cp config.example.yaml config.yaml\n    ```
-
+    ```bash
+    cp config.example.yaml config.yaml
+    ```
     **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
@@ -79,17 +76,22 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
 ## Security Best Practices
 
-## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+- **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
+- **Secure Environment Variables**: Sensitive information is loaded and validated securely from environment variables, preventing hardcoding of credentials.
+- **Least Privilege Access**: Connectors are designed to operate with the minimum necessary permissions, adhering to the principle of least privilege to limit potential impact of compromise.
+- **Read-Only Operations**: Argus AI is strictly read-only. It will never execute commands or modify your infrastructure, ensuring a safe diagnostic and monitoring environment.
+- **Auditable Interactions**: All interactions and queries are logged for auditing and compliance purposes.
 
-## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+## Contributing
 
-## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+We welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.
 
-## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+## License
+
+This project is licensed under the MIT License.
 
 ## Auto-update rule
 When any PR merges to this repo, update relevant docs to reflect the changes.
 
 ## Done when
 Any DevOps team can point argus-ai at their Prometheus+Loki+K8s cluster and query it within 10 minutes.
-
