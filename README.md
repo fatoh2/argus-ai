@@ -27,6 +27,7 @@ Argus AI currently supports read-only integration with:
 - **Argus Monitor (Optional)**: Alerts and wallet activity from the Argus Monitor platform.
 
 ## Quickstart
+This repository includes the `argus-ai` submodule, which contains the core backend application logic. It is designed to be a self-contained service that can be deployed independently or as part of a larger system.
 
 1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
 
@@ -36,9 +37,8 @@ Argus AI currently supports read-only integration with:
    cd argus-ai
    ```
 2. Configure your connectors (e.g., Claude API key):
-   Create a `.env` file in the root directory with your environment variables:
+   Set your environment variables (e.g., `ANTHROPIC_API_KEY`) in your shell or a `.env` file.
    ```dotenv
-   CLAUDE_API_KEY=sk-your-claude-api-key
    ```
 3. Install dependencies:
    ```bash

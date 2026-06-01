@@ -16,7 +16,7 @@ Argus AI performs basic validation on API keys and tokens to ensure their presen
 
 Environment variables are securely loaded and validated by the application to prevent injection attacks.
 
-Sensitive information like API keys should ideally be provided via environment variables, especially in production environments.bles, especially in production environments.bles, especially in production environments.bles, especially in production environments.bles, especially in production environments. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
+Sensitive information like API keys should ideally be provided via environment variables, especially in production environments. Values provided via environment variables will override those specified in `config.yaml`.bles, especially in production environments.bles, especially in production environments.bles, especially in production environments.bles, especially in production environments. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
 Values provided via environment variables will override those specified directly in `config.yaml` if both are present.
 
 
