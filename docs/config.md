@@ -41,7 +41,7 @@ Each connector has its own section in `config.yaml`.
 ### `claude`
 
 - `api_key`: Your Anthropic Claude API key. **Highly recommended to use an environment variable.**
-- `model`: The Claude model to use (e.g., `claude-sonnet-4-6`).
+- `model`: The Claude model to use (e.g., `claude-3-sonnet-20240229`).
 
 ### `kubernetes`
 
@@ -62,7 +62,7 @@ Each connector has its own section in `config.yaml`.
 
 ### `github_actions`
 
-- `token`: A GitHub Personal Access Token with `repo` scope. **Highly recommended to use an environment variable.**
+- `token`: A GitHub Personal Access Token with `workflow` scope. (Consider `repo` scope if the AI needs to read repository content beyond workflow data.) **Highly recommended to use an environment variable.**
 
 ### `argus_monitor`
 
@@ -72,8 +72,8 @@ Each connector has its own section in `config.yaml`.
 
 ```yaml
 claude:
-  api_key: "YOUR_ANTHROPIC_API_KEY"
-  model: "claude-sonnet-4-6"
+  api_key: "<ANTHROPIC_API_KEY_HERE>"
+  model: "claude-3-sonnet-20240229"
 
 kubernetes:
   kubeconfig_path: "~/.kube/config" # Or leave empty for in-cluster
@@ -86,11 +86,11 @@ loki:
 
 argocd:
   url: "https://argocd.example.com"
-  token: "YOUR_ARGOCD_TOKEN"
+  token: "<ARGOCD_AUTH_TOKEN_HERE>"
 
 github_actions:
-  token: "YOUR_GITHUB_TOKEN"
+  token: "<GITHUB_TOKEN_HERE>"
 
 argus_monitor:
-  database_url: "postgresql://user:password@host:port/database"
+  database_url: "<ARGUS_MONITOR_DB_URL_HERE>"
 ```
