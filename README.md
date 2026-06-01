@@ -27,6 +27,25 @@ Argus AI currently supports read-only integration with:
 
 ## Quickstart
 
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/fatoh2/argus-ai.git
+   cd argus-ai
+   ```
+2. Configure your connectors (e.g., Claude API key):
+   Create a `.env` file in the root directory with your environment variables:
+   ```dotenv
+   CLAUDE_API_KEY=sk-your-claude-api-key
+   ```
+3. Install dependencies:
+   ```bash
+   npm install
+   ```
+4. Run locally:
+   ```bash
+   npm run start:dev
+   ```
+
 To get Argus AI up and running in your environment:
 
 1.  **Clone the repository**:
