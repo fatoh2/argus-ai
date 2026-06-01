@@ -56,7 +56,6 @@ To get Argus AI up and running in your environment:
 For detailed configuration, connector setup, and example queries, please refer to the `docs/` directory.
 
 ## Documentation
-- [Security Best Practices](docs/security.md)
 
 - [Connectors](docs/connectors.md)
 - [Configuration](docs/config.md)

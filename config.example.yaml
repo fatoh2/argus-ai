@@ -1,0 +1,22 @@
+claude:
+  api_key: "<ANTHROPIC_API_KEY_HERE>"
+  model: "claude-3-sonnet-20240229"
+
+kubernetes:
+  kubeconfig_path: "~/.kube/config" # Or leave empty for in-cluster
+
+prometheus:
+  url: "http://localhost:9090"
+
+loki:
+  url: "http://localhost:3100"
+
+argocd:
+  url: "https://argocd.example.com"
+  token: "<ARGOCD_AUTH_TOKEN_HERE>"
+
+github_actions:
+  token: "<GITHUB_TOKEN_HERE>"
+
+argus_monitor:
+  database_url: "<ARGUS_MONITOR_DB_URL_HERE>"

@@ -32,6 +32,7 @@ argocd:
 github_actions:
   token: ${GITHUB_TOKEN}
 argus_monitor:
+  database_url: "<ARGUS_MONITOR_DB_URL_HERE>"
   database_url: ${ARGUS_MONITOR_DB_URL} # Read-only replica
 ```
 
@@ -63,15 +64,12 @@ Each connector has its own section in `config.yaml`.
 
 ### `github_actions`
 
-- `token`: A GitHub Personal Access Token with `workflow` scope. (Consider `repo` scope if the AI needs to read repository content beyond workflow data.) **Highly recommended to use an environment variable.**
+- `token`: A GitHub Personal Access Token with `workflow` scope. The `workflow` scope grants access specifically to workflows and artifacts without granting full repository read/write access. Consider `repo` scope only if the AI needs to read repository content beyond workflow data. **Highly recommended to use an environment variable.**
 
 ### `argus_monitor`
 
 - `database_url`: The connection string for a read-only replica of the Argus Monitor PostgreSQL database. **Highly recommended to use an environment variable.**
 
-## Example `config.example.yaml`
-
-```yaml
 claude:
   api_key: "<ANTHROPIC_API_KEY_HERE>"
   model: "claude-3-sonnet-20240229"

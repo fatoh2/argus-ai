@@ -1,53 +1,63 @@
-# Security Best Practices
+# Security Best Practices for Argus AI
 
-Argus AI prioritizes security in all aspects of its design and operation. This document outlines key security considerations and best practices for deploying and using Argus AI.
+This document outlines the security considerations and best practices for deploying and operating Argus AI.
 
-## Configuration Security
+## 1. Configuration Security
 
-### Environment Variables for Sensitive Data
-Sensitive information, such as API keys and authentication tokens, **must** be provided via environment variables, especially in production environments. Argus AI's underlying framework (NestJS) securely loads and validates these variables, preventing direct exposure in configuration files.
+### Never Commit Sensitive Data
+- **Always use environment variables** for sensitive information such as API keys, tokens, and database connection strings.
+- The `config.yaml` file should only contain non-sensitive configuration parameters or references to environment variables using the `${ENV_VAR_NAME}` syntax.
+- **Never commit `config.yaml` or `config.example.yaml` with actual credentials to Git.**
 
-**Recommendation:**
-- Never commit `config.yaml` to Git with sensitive values.
-- Use a secrets management solution (e.g., Kubernetes Secrets, HashiCorp Vault) to inject environment variables into your deployment.
+### Secure Environment Variable Usage
+- Argus AI leverages the underlying framework (NestJS) and configuration libraries to securely load and validate environment variables.
+- Ensure that environment variables are set securely in your deployment environment (e.g., Kubernetes Secrets, CI/CD secret management).
 
-### API Key and Token Validation
-Argus AI performs basic validation on API keys and tokens provided through `config.yaml` or environment variables. This includes checking for presence and basic format where applicable, ensuring that malformed credentials do not lead to unexpected behavior or security vulnerabilities.
+### Input Validation for Credentials
+- All API keys, tokens, and connection strings provided via `config.yaml` or environment variables are validated for basic presence and structural integrity.
+- Malformed or missing critical credentials will result in application startup failures, preventing insecure operation.
 
-### Secure Placeholders in Examples
-The `config.example.yaml` file uses generic placeholders (e.g., `<ANTHROPIC_API_KEY_HERE>`) instead of specific example values to prevent accidental exposure of credential formats and to reduce the risk of information disclosure.
+### `config.example.yaml` Placeholders
+- The `config.example.yaml` file uses generic placeholders (e.g., `<ANTHROPIC_API_KEY_HERE>`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
 
-## Input Validation and Sanitization
+## 2. User Query Security (Prompt Injection Prevention)
 
-### User Query Sanitization (Prompt Injection Prevention)
-A critical security measure in Argus AI is the robust sanitization and validation of all natural language user queries. This is paramount to prevent **Prompt Injection** attacks, where malicious users attempt to manipulate the LLM into revealing sensitive information, bypassing security controls, or performing unintended actions.
+### Robust Input Sanitization
+- **All natural language queries submitted by users are subject to rigorous sanitization and validation** before being processed by the Large Language Model (LLM) or used to construct API calls to external connectors.
+- This process aims to prevent various injection attacks, including:
+    - **Prompt Injection**: Malicious prompts designed to trick the LLM into revealing sensitive information, bypassing security controls, or performing unintended actions.
+    - **Command Injection**: If the query is used to construct shell commands (not a primary use case for Argus AI, but a general concern).
+    - **API Call Injection**: If the query is parsed to construct specific API calls (e.g., Prometheus query language, Kubernetes API parameters), improper sanitization could lead to injection vulnerabilities in those underlying systems.
 
-**Argus AI employs:**
-- **Input Filtering**: Removing or escaping potentially malicious characters or patterns.
-- **Contextual Guardrails**: Ensuring that queries align with the intended scope of the AI assistant.
-- **Output Validation**: Reviewing LLM responses before presenting them to the user to prevent unintended disclosures.
+### LLM Guardrails
+- In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses.
 
-### Connector Configuration Validation
-Beyond API keys, all connector configurations (e.g., URLs, paths) are validated for basic structural integrity and format. This helps prevent misconfigurations that could lead to connection errors or other vulnerabilities.
+## 3. Connector Interaction Security
 
-## Handling External Data
-
-### Empty, Null, and Large Responses
-Argus AI is designed to gracefully handle various responses from external connectors:
-- **Empty/Null Responses**: The application will typically report "no data found" or similar messages without crashing.
-- **Large Data Volumes**: Strategies such as pagination, time-range filtering, and data summarization are employed to manage large datasets from Prometheus, Loki, and other sources, preventing memory exhaustion and performance degradation.
+### Read-Only Access
+- Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
+- Ensure that the credentials provided to Argus AI (e.g., Kubernetes service accounts, GitHub tokens) are scoped to the minimum necessary read-only permissions.
 
 ### Network Connectivity and Error Handling
-The application includes error handling for network connectivity issues when communicating with external connectors. This involves:
-- **Retries**: Attempting to re-establish connections for transient network problems.
-- **Graceful Degradation**: Reporting connection failures clearly without impacting overall application stability.
+- Argus AI implements robust error handling for network connectivity issues when interacting with external connectors.
+- Temporary network failures are handled with retries, and persistent failures are reported gracefully without exposing sensitive internal information.
 
-### Performance Considerations
-To ensure optimal performance and prevent overwhelming external services:
-- **Optimized Queries**: Encourage the use of specific time ranges and aggressive filtering when querying data sources like Prometheus and Loki.
-- **Rate Limiting**: The underlying implementation considers rate limiting for external API calls to prevent abuse and ensure fair usage.
-- **Caching**: Caching mechanisms may be implemented for frequently requested or static data to reduce load on external systems.
+### Data Volume Management
+- When querying external systems (e.g., Prometheus, Loki), Argus AI employs strategies to manage potentially large data volumes, such as:
+    - Specifying time ranges and filtering aggressively in queries.
+    - Implementing pagination or sampling where appropriate to prevent memory exhaustion and performance degradation.
 
-## Deployment Security
+### Rate Limiting and Caching
+- The underlying implementation considers rate limiting for external API calls to prevent overwhelming connected services.
+- Caching mechanisms may be employed for frequently requested, non-sensitive data to improve performance and reduce external API load.
 
-Refer to the [Deployment Guide](docs/deployment.md) for secure deployment instructions, including recommendations for network segmentation, access control, and secrets management in Kubernetes environments.
+## 4. Deployment Security
+
+### Principle of Least Privilege
+- Deploy Argus AI with the principle of least privilege. Ensure its runtime environment (e.g., Kubernetes Pods) has only the necessary permissions and access to resources.
+
+### Regular Updates
+- Keep Argus AI dependencies and the underlying operating system/container images regularly updated to patch known vulnerabilities.
+
+### Monitoring and Logging
+- Integrate Argus AI's logs with your central logging and monitoring solutions to detect and respond to suspicious activity.
