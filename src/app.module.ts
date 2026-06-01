@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { GeminiModule } from './llm/gemini/gemini.module';
+import { ChatModule } from './chat/chat.module';
+import { ConnectorsModule } from './connectors/connectors.module';
+import { LlmModule } from './llm/llm.module';
 
 @Module({
-  imports: [GeminiModule],
+  imports: [ChatModule, LlmModule, ConnectorsModule],
   controllers: [AppController],
   providers: [AppService],
 })
