@@ -30,7 +30,7 @@ Argus AI currently supports read-only integration with:
 
 This repository includes the `argus-ai` submodule, which contains the core backend application logic for the AI assistant. It is designed to be a self-contained service that can be deployed independently or as part of a larger system.
 
-1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
+1.  **Prerequisites**: Ensure you have `git`, Node.js (v18+), and npm installed.
 
 2.  **Clone the repository and initialize submodule**:
     ```bash
@@ -47,12 +47,17 @@ This repository includes the `argus-ai` submodule, which contains the core backe
     **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
-4.  **Install dependencies**:
+4.  **Navigate to the submodule directory**:
+    ```bash
+    cd argus-ai
+    ```
+
+5.  **Install dependencies**:
     ```bash
     npm install
     ```
 
-5.  **Run locally (for development/testing)**:
+6.  **Run locally (for development/testing)**:
     ```bash
     npm run start:dev
     ```
