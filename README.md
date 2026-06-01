@@ -1,7 +1,6 @@
-# Argus AI — Your Autonomous Infrastructure Assistant
+# Argus AI
 
 Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Anthropic's Claude API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
-
 
 ## Features
 
@@ -13,9 +12,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 ## Demo
 
-![Demo GIF Coming Soon (Expected by end of sprint)](https://via.placeholder.com/800x450?text=Demo+GIF+Coming+Soon)
-
-## Supported Connectors
+[Link to demo video/gif]
 
 Argus AI currently supports read-only integration with:
 
@@ -46,6 +43,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
     For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
+    Alternatively, if `kubeconfig_path` is removed or commented out, the system will automatically attempt to use in-cluster configuration.
 
 4.  **Install dependencies**:
     ```bash
@@ -69,21 +67,12 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
     Refer to [Example Queries](docs/examples.md) for more example queries.
 
+**Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
 
 ## Security Best Practices
 
-- **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
-- **Secure Environment Variables**: Sensitive information is loaded and validated securely from environment variables, minimizing the risk of exposure.
-- **Configuration Validation**: Connector configurations, including API keys and URLs, undergo basic structural and format validation to prevent misconfigurations and potential vulnerabilities.
-- **Least Privilege**: When configuring GitHub tokens, prefer the `repo` scope over broader scopes unless broader access is strictly necessary.
-
-## Full Documentation
-
-- [Connectors](docs/connectors.md) — How each connector works (K8s, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor)
-- [Configuration](docs/config.md) — Full config reference, env vars, connector setup
-- [Example Queries](docs/examples.md) — Example queries and AI responses (postmortem, incident summary, pod restart analysis)
-- [Development Guide](docs/development.md) — Adding new connectors, running locally, testing
-
-## Contributing
-
-We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+- **Principle of Least Privilege**: Ensure all API tokens and credentials have the minimum necessary permissions.
+- **Environment Variables for Secrets**: Never hardcode sensitive information directly into `config.yaml` or any other committed file. Use environment variables.
+- **Read-Only Connectors**: All Argus AI connectors are designed to be read-only, preventing accidental or malicious modifications to your infrastructure.
+- **Regular Audits**: Periodically review access logs and API usage for any suspicious activity.
+- **Network Segmentation**: Deploy Argus AI in a segmented network environment to limit its access to critical systems.
