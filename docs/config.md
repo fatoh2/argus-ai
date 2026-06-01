@@ -40,9 +40,37 @@ argocd:
 
 github_actions:
   # For GitHub Actions, prefer the workflow scope for tokens over repo for least privilege.
-  token: ${GITHUB_TOKEN}
+  token: ${GITHUB_TOKEN} # For GitHub Actions, prefer the workflow scope for tokens over repo for least privilege.
 
 
 argus_monitor:
+  database_url: ${ARGUS_MONITOR_DB_URL} # Read-only replica
+
+# Example `config.example.yaml`
+# This section provides a full example of the `config.example.yaml` structure.
+# Remember to copy this to `config.yaml` and fill in your actual values.
+
+# claude:
+#   api_key: "${ANTHROPIC_API_KEY}"
+#   model: claude-3-sonnet-20240229
+
+# kubernetes:
+#   kubeconfig_path: "/path/to/your/kubeconfig" # Or use in-cluster service account
+
+# prometheus:
+#   url: "http://localhost:9090"
+
+# loki:
+#   url: "http://localhost:3100"
+
+# argocd:
+#   url: "https://argocd.example.com"
+#   token: "${ARGOCD_AUTH_TOKEN}"
+
+# github_actions:
+#   token: "${GITHUB_TOKEN}"
+
+# argus_monitor:
+#   database_url: "${ARGUS_MONITOR_DB_URL}"
   database_url: ${ARGUS_MONITOR_DB_URL} # Read-only replica
 
