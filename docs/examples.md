@@ -53,6 +53,30 @@ ArgoCD Sync Status: Synced and Healthy.
 Overall: The `payment-gateway` deployment appears healthy.
 ```
 
+## Postmortem Analysis
+
+**Query**: "Provide a postmortem analysis for the database outage that occurred last Tuesday between 10:00 and 11:00 UTC."
+
+**Expected AI Response**: Argus AI would correlate data from multiple sources for the specified time frame. It would look at Kubernetes events for database pods, Prometheus metrics for database performance (e.g., connection errors, latency, disk I/O), and Loki logs for any errors or warnings from the database instances. It would then synthesize this into a postmortem summary.
+
+Example Output:
+```
+Postmortem Analysis: Database Outage (Last Tuesday, 10:00-11:00 UTC):
+
+Timeline:
+- 10:00 UTC: Initial alert triggered by Prometheus for high database connection errors.
+- 10:05 UTC: Kubernetes events show database primary pod restarting due to 'NodeNotReady' condition.
+- 10:10 UTC: Loki logs indicate a sudden increase in disk I/O errors on the node hosting the database.
+- 10:30 UTC: Database replica promoted to primary, but connection issues persisted due to underlying storage problems.
+- 10:55 UTC: Node hosting database was drained and restarted by infrastructure team.
+- 11:00 UTC: Database service restored, all metrics returned to normal.
+
+Root Cause: Underlying storage issue on the Kubernetes node hosting the primary database pod, leading to disk I/O errors and subsequent node unreadiness.
+Impact: 60 minutes of database unavailability, affecting all services dependent on the database.
+Resolution: Node restart and automatic database failover/recovery.
+Lessons Learned: Improve monitoring for underlying node storage health. Explore multi-zone database deployments for higher availability.
+```
+
 ## GitHub Actions Workflow Failure
 
 **Query**: "What caused the last failed GitHub Actions workflow run for the `ci.yml` workflow on the `main` branch of `fatoh2/argus-monitor`?"
@@ -69,7 +93,5 @@ Timestamp: 2023-10-27 10:15:30 UTC
 
 Failed Job: 'build-and-test'
 Failed Step: 'Run unit tests'
-Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details."
-
-Recommendation: Review the logs for the 'Run unit tests' step in workflow run 1234567890 to identify the specific test failures.
+Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details.
 ```
