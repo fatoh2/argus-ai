@@ -86,3 +86,10 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 ## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
 
 ## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+
+## Auto-update rule
+When any PR merges to this repo, update relevant docs to reflect the changes.
+
+## Done when
+Any DevOps team can point argus-ai at their Prometheus+Loki+K8s cluster and query it within 10 minutes.
+
