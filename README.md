@@ -26,20 +26,8 @@ Argus AI currently supports read-only integration with:
 - **Argus Monitor (Optional)**: Alerts and wallet activity from the Argus Monitor platform.
 
 ## Quickstart
-```bash
-git submodule update --init --recursive
-```
 
 To get Argus AI up and running in your environment:
-
-1.  **Initialize and update submodules**:
-    ```bash
-    git submodule update --init --recursive
-    ```
-\n1.  **Initialize and update submodules**:
-    ```bash
-    git submodule update --init --recursive
-    ```
 
 1.  **Clone the repository**:
     
