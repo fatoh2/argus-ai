@@ -53,6 +53,30 @@ ArgoCD Sync Status: Synced and Healthy.
 Overall: The `payment-gateway` deployment appears healthy.
 ```
 
+## Postmortem Analysis
+
+**Query**: "Provide a postmortem analysis for the database outage that occurred last Tuesday between 10:00 and 11:00 UTC."
+
+**Expected AI Response**: Argus AI would correlate data from multiple sources for the specified time frame. It would look at Kubernetes events for database pods, Prometheus metrics for database performance (e.g., connection errors, latency, disk I/O), and Loki logs for any errors or warnings from the database instances. It would then synthesize this into a postmortem summary.
+
+Example Output:
+```
+Postmortem Analysis: Database Outage (Last Tuesday, 10:00-11:00 UTC):
+
+Timeline:
+- 10:00 UTC: Initial alert triggered by Prometheus for high database connection errors.
+- 10:05 UTC: Kubernetes events show database primary pod restarting due to 'NodeNotReady' condition.
+- 10:10 UTC: Loki logs indicate a sudden increase in disk I/O errors on the node hosting the database.
+- 10:30 UTC: Database replica promoted to primary, but connection issues persisted due to underlying storage problems.
+- 10:55 UTC: Node hosting database was drained and restarted by infrastructure team.
+- 11:00 UTC: Database service restored, all metrics returned to normal.
+
+Root Cause: Underlying storage issue on the Kubernetes node hosting the primary database pod, leading to disk I/O errors and subsequent node unreadiness.
+Impact: 60 minutes of database unavailability, affecting all services dependent on the database.
+Resolution: Node restart and automatic database failover/recovery.
+Lessons Learned: Improve monitoring for underlying node storage health. Explore multi-zone database deployments for higher availability.
+```
+
 ## GitHub Actions Workflow Failure
 
 **Query**: "What caused the last failed GitHub Actions workflow run for the `ci.yml` workflow on the `main` branch of `fatoh2/argus-monitor`?"
@@ -72,4 +96,21 @@ Failed Step: 'Run unit tests'
 Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details."
 
 Recommendation: Review the logs for the 'Run unit tests' step in workflow run 1234567890 to identify the specific test failures.
+```
+
+## Pod Restart Analysis (Advanced)
+
+**Query**: "Analyze the restarts of `nginx-ingress` pods in the `ingress-nginx` namespace over the last 7 days, focusing on resource-related issues."
+
+**Expected AI Response**: Argus AI would query Kubernetes for all restart events of `nginx-ingress` pods in the specified namespace and timeframe. It would specifically look for termination reasons like `OOMKilled` (Out Of Memory Killed) or `ContainerCreating` errors related to resource limits. It would also check Prometheus for historical CPU and memory usage of these pods to identify if they consistently hit resource limits before restarting.
+
+Example Output:
+```
+Analysis of nginx-ingress pod restarts (ingress-nginx namespace) - Last 7 days:
+
+Observed 12 restarts across 3 different nginx-ingress pods. 8 of these restarts were due to 'OOMKilled' (Out Of Memory Killed) termination reason, primarily occurring during peak traffic hours (18:00-22:00 UTC).
+
+Prometheus metrics confirm that memory usage for these pods frequently exceeded their configured limits (256Mi) just prior to the 'OOMKilled' events. CPU utilization also showed spikes, but memory appears to be the primary constraint.
+
+Recommendation: Increase the memory limits for the nginx-ingress deployment in the ingress-nginx namespace. Consider setting a higher request value as well to ensure adequate resources are allocated during startup.
 ```
