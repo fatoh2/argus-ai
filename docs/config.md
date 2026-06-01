@@ -14,11 +14,7 @@ Argus AI performs basic validation on API keys and tokens to ensure their presen
 
 ## Environment Variables
 
-Environment variables are securely loaded and validated by the application to prevent injection attacks.
-
 Sensitive information like API keys should ideally be provided via environment variables, especially in production environments. Values provided via environment variables will override those specified in `config.yaml`. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
-Values provided via environment variables will override those specified directly in `config.yaml` if both are present.
-
 
 Example:
 
@@ -31,7 +27,6 @@ kubernetes:
     # IMPORTANT: The `kubeconfig_path` parameter requires rigorous sanitization and escaping
     # in the application code to prevent path traversal and command injection vulnerabilities.
     # Ensure that any usage of this path in shell commands or system calls is properly secured.
-
   kubeconfig_path: /path/to/your/kubeconfig # Or use in-cluster service account
 
 prometheus:
@@ -50,6 +45,41 @@ github_actions:
 argus_monitor:
   database_url: ${ARGUS_MONITOR_DB_URL} # Read-only replica
 ```
+
+## Connector-Specific Configuration
+
+Each connector has its own section in `config.yaml`.
+
+### `claude`
+
+- `api_key`: Your Anthropic Claude API key. **Highly recommended to use an environment variable.**
+- `model`: The Claude model to use (e.g., `claude-sonnet-4-6`).
+
+### `kubernetes`
+
+- `kubeconfig_path`: (Optional) Path to your kubeconfig file. If not provided, it will attempt to use an in-cluster service account.
+
+### `prometheus`
+
+- `url`: The URL of your Prometheus instance.
+
+### `loki`
+
+- `url`: The URL of your Loki instance.
+
+### `argocd`
+
+- `url`: The URL of your ArgoCD instance.
+- `token`: (Optional) An authentication token for ArgoCD. **Highly recommended to use an environment variable.**
+
+### `github_actions`
+
+- `token`: A GitHub Personal Access Token with `workflow` scope. **Highly recommended to use an environment variable.**
+
+### `argus_monitor`
+
+- `database_url`: The database URL for the Argus Monitor PostgreSQL instance. **Highly recommended to use an environment variable.**
+- `api_key`: (Optional) API key for Argus Monitor (if applicable). **Highly recommended to use an environment variable.**
 
 ## Error Handling and Resilience
 
@@ -80,8 +110,7 @@ kubernetes:
     # IMPORTANT: The `kubeconfig_path` parameter requires rigorous sanitization and escaping
     # in the application code to prevent path traversal and command injection vulnerabilities.
     # Ensure that any usage of this path in shell commands or system calls is properly secured.
-
-  kubeconfig_path: "~/.kube/config" # Or leave empty for in-cluster
+  kubeconfig_path: "~/.kube/config"
 
 prometheus:
   url: "http://localhost:9090"
@@ -98,4 +127,5 @@ github_actions:
 
 argus_monitor:
   database_url: "${ARGUS_MONITOR_DB_URL}"
+  api_key: "${ARGUS_MONITOR_API_KEY}"
 ```
