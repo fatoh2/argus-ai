@@ -38,12 +38,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     git submodule update --init --recursive
     ```
 
-3.  **Navigate to the submodule directory**:
-    ```bash
-    cd argus-ai # Navigate into the argus-ai submodule directory
-    ```
-
-4.  **Configure your connectors**:
+3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
     ```bash
     cp config.example.yaml config.yaml
@@ -54,18 +49,18 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
     Alternatively, if `kubeconfig_path` is removed or commented out, the system will automatically attempt to use in-cluster configuration.
 
-5.  **Install dependencies**:
+4.  **Install dependencies**:
     ```bash
     npm install
     ```
 
-6.  **Run locally (for development/testing)**:
+5.  **Run locally (for development/testing)**:
     ```bash
     npm run start:dev
     ```
     This will start the NestJS backend, typically on `http://localhost:3000`.
 
-7.  **Start Querying!**
+6.  **Start Querying!**
     Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
 
     ```bash
