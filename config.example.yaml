@@ -1,5 +1,5 @@
 claude:
-  api_key: "<ANTHROPIC_API_KEY_HERE>"
+  api_key: "${ANTHROPIC_API_KEY}"
   model: "claude-3-sonnet-20240229"
 
 kubernetes:
@@ -13,10 +13,10 @@ loki:
 
 argocd:
   url: "https://argocd.example.com"
-  token: "<ARGOCD_AUTH_TOKEN_HERE>"
+  token: "${ARGOCD_AUTH_TOKEN}"
 
 github_actions:
-  token: "<YOUR_GITHUB_TOKEN>"
+  token: "${GITHUB_TOKEN}"
 
 argus_monitor:
-  database_url: "<ARGUS_MONITOR_DB_URL_HERE>"
+  database_url: "${ARGUS_MONITOR_DB_URL}"
