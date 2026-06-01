@@ -16,7 +16,7 @@ Argus AI performs basic validation on API keys and tokens to ensure their presen
 
 Environment variables are securely loaded and validated by the application to prevent injection attacks.
 
-Sensitive information like API keys should ideally be provided via environment variables, especially in production environments. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
+Sensitive information like API keys should ideally be provided via environment variables, especially in production environments.bles.bles, especially in production environments. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
 
 Example:
 
@@ -26,6 +26,10 @@ claude:
   model: claude-3-sonnet-20240229
 
 kubernetes:
+    # IMPORTANT: The `kubeconfig_path` parameter requires rigorous sanitization and escaping
+    # in the application code to prevent path traversal and command injection vulnerabilities.
+    # Ensure that any usage of this path in shell commands or system calls is properly secured.
+
   kubeconfig_path: /path/to/your/kubeconfig # Or use in-cluster service account
 
 prometheus:
@@ -49,7 +53,7 @@ argus_monitor:
 
 Argus AI is designed to handle various operational challenges:
 
--   **Invalid Configuration**: The application will perform basic structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
+-   **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). This includes specific checks for path-related configurations (e.g., `kubeconfig_path`) to prevent path traversal and command injection vulnerabilities. Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
 -   **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. The application will implement retry mechanisms and report connection issues without crashing.
 -   **Empty/Null/Large Responses**:
     -   **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
@@ -71,6 +75,10 @@ claude:
   model: "claude-3-sonnet-20240229"
 
 kubernetes:
+    # IMPORTANT: The `kubeconfig_path` parameter requires rigorous sanitization and escaping
+    # in the application code to prevent path traversal and command injection vulnerabilities.
+    # Ensure that any usage of this path in shell commands or system calls is properly secured.
+
   kubeconfig_path: "~/.kube/config" # Or leave empty for in-cluster
 
 prometheus:
