@@ -1,0 +1,1 @@
+import React from 'react';\n\ninterface ChatWidgetProps {\n  // Add any necessary props here\n}\n\nexport const ChatWidget: React.FC<ChatWidgetProps> = () => {\n  // TODO: Implement chat UI logic\n  return (\n    <div>\n      <h2>Chat Widget</h2>\n      <p>This is the embeddable chat widget.</p>\n    </div>\n  );\n};
