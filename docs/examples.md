@@ -200,3 +200,41 @@ The error logs show 'upstream connect timeout' errors starting at 14:31 UTC, whi
 
 Recommendation: Investigate the upstream service that the api-gateway connects to. Consider increasing the upstream timeout or adding circuit breaker logic.
 ```
+
+## ArgoCD Application Status
+
+**Query**: "What is the sync status of the `my-app-frontend` ArgoCD application?"
+
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getAppStatus()` method to fetch the sync and health status of the specified application.
+
+Example Output:
+```
+ArgoCD Application Status: my-app-frontend
+
+  Namespace: default
+  Sync Status: Synced
+  Health Status: Healthy
+  Revision: abc123def456
+```
+
+## ArgoCD Cluster Summary
+
+**Query**: "Give me a summary of all ArgoCD applications and their health status."
+
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getClusterSummary()` method, which lists all applications and highlights any that are out of sync or unhealthy.
+
+Example Output:
+```
+ArgoCD Cluster Summary:
+  Total applications: 12
+  Synced: 10/12
+  Healthy: 9/12
+
+Out of sync applications:
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
+  - payment-worker (sync: OutOfSync, health: Degraded)
+
+Unhealthy applications:
+  - payment-worker (sync: OutOfSync, health: Degraded)
+  - database-backup (sync: Synced, health: Degraded)
+```
