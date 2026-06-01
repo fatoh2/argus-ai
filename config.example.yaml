@@ -28,3 +28,4 @@ github_actions:
 # Connects to the Argus Monitor platform to fetch alerts and wallet activity.
 argus_monitor:
   database_url: "${ARGUS_MONITOR_DB_URL}" # Database URL for the Argus Monitor PostgreSQL instance
+  api_key: "${ARGUS_MONITOR_API_KEY}" # API key for Argus Monitor (if applicable)

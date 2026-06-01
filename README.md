@@ -39,18 +39,18 @@ This repository includes the `argus-ai` submodule, which contains the core backe
     git submodule update --init --recursive
     ```
 
-3.  **Configure your connectors**:
+3.  **Navigate to the submodule directory**:
+    ```bash
+    cd argus-ai # Navigate into the argus-ai submodule directory
+    ```
+
+4.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
     ```bash
     cp config.example.yaml config.yaml
     ```
     **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
-
-4.  **Navigate to the submodule directory**:
-    ```bash
-    cd argus-ai
-    ```
 
 5.  **Install dependencies**:
     ```bash
