@@ -30,37 +30,27 @@ Argus AI currently supports read-only integration with:
 To get Argus AI up and running in your environment:
 
 1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/fatoh2/argus-ai.git
-    cd argus-ai
-    ```
+    
 2.  **Configure your connectors**:
-    Copy `config.example.yaml` to `config.yaml` and fill in your API endpoints and credentials.
-    ```bash
-    cp config.example.yaml config.yaml
-    # Edit config.yaml with your settings
-    ```
-    **Never commit `config.yaml` to Git!**
+    Copy  to  and fill in your API endpoints and credentials.
+    
+    **Never commit  to Git!**
 3.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
+    
 4.  **Run locally (for development/testing)**:
-    ```bash
-    npm run start:dev
-    ```
+    
     This will start the NestJS backend and the React chat UI.
 5.  **Deploy to Kubernetes**:
     Refer to the [Deployment Guide](docs/deployment.md) for production deployment instructions using the provided Helm chart.
 
-For detailed configuration, connector setup, and example queries, please refer to the `docs/` directory.
+For detailed configuration, connector setup, and example queries, please refer to the  directory.
 
 ## Security Best Practices
 
 - **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
 - **Secure Environment Variables**: Sensitive information is loaded and validated securely from environment variables, minimizing the risk of exposure.
 - **Configuration Validation**: Connector configurations, including API keys and URLs, undergo basic structural and format validation to prevent misconfigurations and potential vulnerabilities.
-- **Least Privilege**: When configuring GitHub tokens, prefer the `workflow` scope over `repo` scope unless broader access is strictly necessary.
+- **Least Privilege**: When configuring GitHub tokens, prefer the  scope over  scope unless broader access is strictly necessary.
 
 ## Documentation
 

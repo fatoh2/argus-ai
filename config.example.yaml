@@ -16,7 +16,7 @@ argocd:
   token: "<ARGOCD_AUTH_TOKEN_HERE>"
 
 github_actions:
-  token: "<GITHUB_TOKEN_HERE>"
+  token: "<YOUR_GITHUB_TOKEN>"
 
 argus_monitor:
   database_url: "<ARGUS_MONITOR_DB_URL_HERE>"

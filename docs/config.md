@@ -39,38 +39,53 @@ argocd:
   token: ${ARGOCD_AUTH_TOKEN}
 
 github_actions:
-  # For GitHub Actions, prefer the workflow scope for tokens over repo for least privilege.
-  token: ${GITHUB_TOKEN} # For GitHub Actions, prefer the workflow scope for tokens over repo for least privilege.
-
+  token: ${GITHUB_TOKEN} # For GitHub Actions, prefer the 'workflow' scope for tokens over 'repo' for least privilege.
 
 argus_monitor:
   database_url: ${ARGUS_MONITOR_DB_URL} # Read-only replica
+```
 
-# Example `config.example.yaml`
-# This section provides a full example of the `config.example.yaml` structure.
-# Remember to copy this to `config.yaml` and fill in your actual values.
+## Error Handling and Resilience
 
-# claude:
-#   api_key: "${ANTHROPIC_API_KEY}"
-#   model: claude-3-sonnet-20240229
+Argus AI is designed to handle various operational challenges:
 
-# kubernetes:
-#   kubeconfig_path: "/path/to/your/kubeconfig" # Or use in-cluster service account
+-   **Invalid Configuration**: The application will perform basic structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
+-   **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. The application will implement retry mechanisms and report connection issues without crashing.
+-   **Empty/Null/Large Responses**:
+    -   **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
+    -   **Large Data Volumes**: Strategies like pagination, sampling, and summarization will be employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
 
-# prometheus:
-#   url: "http://localhost:9090"
+## Performance Considerations
 
-# loki:
-#   url: "http://localhost:3100"
+-   **Optimizing Queries**: When interacting with external systems like Prometheus and Loki, it's recommended to specify precise time ranges and aggressive filtering in your natural language queries to minimize the data volume retrieved. This directly impacts response times and resource usage.
+-   **LLM Processing**: The time taken for LLM processing is directly proportional to the complexity and volume of the data provided. Efficient data retrieval and summarization are key to maintaining responsiveness.
 
-# argocd:
-#   url: "https://argocd.example.com"
-#   token: "${ARGOCD_AUTH_TOKEN}"
+## Example `config.example.yaml`
 
-# github_actions:
-#   token: "${GITHUB_TOKEN}"
+This section provides a full example of the `config.example.yaml` structure.
+Remember to copy this to `config.yaml` and fill in your actual values.
 
-# argus_monitor:
-#   database_url: "${ARGUS_MONITOR_DB_URL}"
-  database_url: ${ARGUS_MONITOR_DB_URL} # Read-only replica
+```yaml
+claude:
+  api_key: "<ANTHROPIC_API_KEY_HERE>"
+  model: "claude-3-sonnet-20240229"
 
+kubernetes:
+  kubeconfig_path: "~/.kube/config" # Or leave empty for in-cluster
+
+prometheus:
+  url: "http://localhost:9090"
+
+loki:
+  url: "http://localhost:3100"
+
+argocd:
+  url: "https://argocd.example.com"
+  token: "<ARGOCD_AUTH_TOKEN_HERE>"
+
+github_actions:
+  token: "<GITHUB_TOKEN_HERE>"
+
+argus_monitor:
+  database_url: "<ARGUS_MONITOR_DB_URL_HERE>"
+```
