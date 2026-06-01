@@ -13,7 +13,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 ## Demo
 
-![Demo GIF Placeholder](https://via.placeholder.com/800x450?text=Demo+GIF+Coming+Soon)
+![Demo GIF Coming Soon (Expected by end of sprint)](https://via.placeholder.com/800x450?text=Demo+GIF+Coming+Soon)
 
 ## Supported Connectors
 
