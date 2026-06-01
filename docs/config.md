@@ -16,7 +16,7 @@ Argus AI performs basic validation on API keys and tokens to ensure their presen
 
 Environment variables are securely loaded and validated by the application to prevent injection attacks.
 
-Sensitive information like API keys should ideally be provided via environment variables, especially in production environments. Values provided via environment variables will override those specified in `config.yaml`.bles, especially in production environments.bles, especially in production environments.bles, especially in production environments.bles, especially in production environments. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
+Sensitive information like API keys should ideally be provided via environment variables, especially in production environments. Values provided via environment variables will override those specified in `config.yaml`. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
 Values provided via environment variables will override those specified directly in `config.yaml` if both are present.
 
 
@@ -55,7 +55,7 @@ argus_monitor:
 
 Argus AI is designed to handle various operational challenges:
 
--   **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). This includes specific checks for path-related configurations (e.g., `kubeconfig_path`) to prevent path traversal and command injection vulnerabilities. Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
+-   **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
 -   **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. The application will implement retry mechanisms and report connection issues without crashing.
 -   **Empty/Null/Large Responses**:
     -   **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
