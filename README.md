@@ -19,7 +19,7 @@ Argus AI currently supports read-only integration with:
 - **Kubernetes**: Pod status, deployments, events, and resource utilization.
 - **Prometheus**: Metric queries, historical data, and alert status.
 - **Loki**: Log aggregation, searching, and analysis.
-- **ArgoCD**: Application status, synchronization health, and deployment history.
+- **ArgoCD**: Application sync status, health checks, and cluster-wide deployment summaries.
 - **GitHub Actions**: Workflow run status, history, and job details.
 - **Argus Monitor (Optional)**: Alerts and wallet activity from the Argus Monitor platform.
 

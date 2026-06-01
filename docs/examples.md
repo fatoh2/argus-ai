@@ -77,6 +77,91 @@ Resolution: Node restart and automatic database failover/recovery.
 Lessons Learned: Improve monitoring for underlying node storage health. Explore multi-zone database deployments for higher availability.
 ```
 
+## Log Analysis with Loki
+
+**Query**: "Show me all error logs from the 'api-gateway' service in the last hour."
+
+**Expected AI Response**: Argus AI would use the Loki connector's `queryLogs` method with the label selector `app="api-gateway"` and level filter for errors. It would return the matching log entries with timestamps.
+
+Example Output:
+```
+Error Logs for api-gateway (Last 1 hour):
+
+Found 12 error log entries.
+
+Recent errors:
+- 14:32:01 - ERROR: upstream connect error or disconnect/reset before headers
+- 14:32:02 - ERROR: connection refused to auth-service:8080
+- 14:35:10 - ERROR: rate limit exceeded for client IP 10.0.1.50
+- 14:40:00 - ERROR: upstream connect error or disconnect/reset before headers
+- 14:40:01 - ERROR: connection refused to auth-service:8080
+
+Pattern detected: The errors correlate with a brief auth-service outage between 14:32 and 14:40 UTC.
+```
+
+**Query**: "Summarize errors from all services in the last 2 hours."
+
+**Expected AI Response**: Argus AI would use the Loki connector's `summarizeErrors` method to aggregate error logs across all services, grouped by source and message.
+
+Example Output:
+```
+Error Summary (Last 2 hours):
+
+Found 47 error log entries across all services.
+
+Top sources:
+  - api-gateway/production: 18 errors
+  - auth-service/production: 12 errors
+  - database/production: 9 errors
+  - worker/production: 5 errors
+  - frontend/production: 3 errors
+
+Top error messages:
+  - "ERROR: upstream connect error or disconnect/reset before headers" (15x)
+  - "ERROR: connection refused to auth-service:8080" (10x)
+  - "ERROR: query execution timeout exceeded" (7x)
+  - "ERROR: disk I/O error on /data volume" (5x)
+  - "ERROR: rate limit exceeded for client" (3x)
+```
+
+## ArgoCD Application Status
+
+**Query**: "What is the status of the 'my-app-frontend' ArgoCD application?"
+
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getAppStatus` method to fetch the sync and health status of the specified application.
+
+Example Output:
+```
+ArgoCD Application Status: my-app-frontend
+
+Application: my-app-frontend
+  Namespace: default
+  Sync Status: Synced
+  Health Status: Healthy
+  Revision: abc123def456
+
+The application is currently synced and healthy.
+```
+
+**Query**: "Give me a summary of all ArgoCD applications."
+
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getClusterSummary` method to get a comprehensive overview of all applications managed by ArgoCD.
+
+Example Output:
+```
+ArgoCD Cluster Summary:
+  Total applications: 8
+  Synced: 7/8
+  Healthy: 6/8
+
+Out of sync applications:
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
+
+Unhealthy applications:
+  - payment-worker (sync: Synced, health: Degraded)
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
+```
+
 ## GitHub Actions Workflow Failure
 
 **Query**: "What caused the last failed GitHub Actions workflow run for the `ci.yml` workflow on the `main` branch of `fatoh2/argus-monitor`?"
@@ -95,5 +180,23 @@ Failed Job: 'build-and-test'
 Failed Step: 'Run unit tests'
 Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details."
 
-Recommendation: Review the unit test logs for specific failures and address the underlying code issues.
+Recommendation: Review the unit test logs for the 'build-and-test' job to identify the specific test failures.
+```
+
+## Multi-Connector Query
+
+**Query**: "Is there any correlation between the recent Loki error logs and the Prometheus CPU spike in the 'production' namespace?"
+
+**Expected AI Response**: Argus AI would query Loki for recent error logs in the 'production' namespace and Prometheus for CPU metrics over the same time period. It would then correlate the data to identify any relationships.
+
+Example Output:
+```
+Correlation Analysis: Loki Errors vs Prometheus CPU (production namespace, Last 1 hour):
+
+Loki found 23 error log entries, primarily from the 'api-gateway' service.
+Prometheus shows a CPU spike from 45% to 92% on 'api-gateway' pods between 14:30 and 14:35 UTC.
+
+The error logs show 'upstream connect timeout' errors starting at 14:31 UTC, which aligns with the CPU spike. This suggests the CPU spike was caused by a backlog of requests timing out.
+
+Recommendation: Investigate the upstream service that the api-gateway connects to. Consider increasing the upstream timeout or adding circuit breaker logic.
 ```
