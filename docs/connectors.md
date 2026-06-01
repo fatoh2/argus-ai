@@ -13,8 +13,8 @@ Argus AI integrates with various infrastructure components to provide comprehens
 - Cluster events
 
 **Example Questions**: 
-- \"What is the status of pods with the label \'app=my-app\' in the \'production\' namespace?\"
-- \"List all events in the \'staging\' namespace from the last hour.\"
+- "What is the status of pods with the label 'app=my-app' in the 'production' namespace?"
+- "List all events in the 'staging' namespace from the last hour."
 
 ## Prometheus Connector
 
@@ -23,8 +23,8 @@ Argus AI integrates with various infrastructure components to provide comprehens
 **How it works**: Executes PromQL queries against your Prometheus instance. It can retrieve historical and real-time metric data.
 
 **Example Questions**: 
-- \"What is the average CPU utilization for the \'web-server\' deployment over the last 24 hours?\"
-- \"Show me the rate of HTTP 5xx errors from the \'api-gateway\' service in the last 6 hours.\"
+- "What is the average CPU utilization for the 'web-server' deployment over the last 24 hours?"
+- "Show me the rate of HTTP 5xx errors from the 'api-gateway' service in the last 6 hours."
 
 ## Loki Connector
 
@@ -32,19 +32,58 @@ Argus AI integrates with various infrastructure components to provide comprehens
 
 **How it works**: Queries Loki using LogQL to retrieve log streams based on labels and time ranges. By default, queries are capped at 500 lines to prevent excessive data retrieval.
 
+**Available Methods**:
+
+| Method | Description |
+|---|---|
+| `isHealthy()` | Health check — verifies Loki is reachable via `/ready` endpoint |
+| `queryRange(options)` | Execute a LogQL range query with start/end time, limit (capped at 500), and direction |
+| `queryLogs(labelSelector, start?, end?, level?, limit?)` | Convenience method to query logs for a specific label selector, optionally filtered by log level |
+| `summarizeErrors(hours?, labelSelector?)` | Summarize error logs from the last N hours — groups by source and message, returns a human-readable summary |
+
+**Configuration**:
+
+```yaml
+loki:
+  url: "http://localhost:3100"   # URL of your Loki instance
+```
+
+Configured via `LOKI_URL` environment variable or `config.yaml`.
+
 **Example Questions**: 
-- \"Find all error logs for the \'auth-service\' in the last 30 minutes.\"
-- \"Show me logs from pods with the label \'component=database\' that contain the word \'failed\' in the \'production\' namespace.\"
+- "Find all error logs for the 'auth-service' in the last 30 minutes."
+- "Show me logs from pods with the label 'component=database' that contain the word 'failed' in the 'production' namespace."
+- "Summarize errors from the last hour across all services."
 
 ## ArgoCD Connector
 
 **Purpose**: Monitors the status of your ArgoCD applications.
 
-**How it works**: Connects to the ArgoCD API to fetch the status of specified applications, including sync status and health.
+**How it works**: Connects to the ArgoCD API to fetch the status of specified applications, including sync status and health. Supports authentication via bearer token.
+
+**Available Methods**:
+
+| Method | Description |
+|---|---|
+| `isHealthy()` | Health check — verifies ArgoCD is reachable via `/api/v1/session/userinfo` |
+| `getAppStatus(appName)` | Get sync status, health status, and revision for a specific ArgoCD application |
+| `listApps()` | List all applications with their sync and health status |
+| `getClusterSummary()` | Get a human-readable summary of all applications — total count, synced/healthy counts, and lists of out-of-sync/unhealthy apps |
+
+**Configuration**:
+
+```yaml
+argocd:
+  url: "https://argocd.example.com"   # URL of your ArgoCD instance
+  token: "${ARGOCD_AUTH_TOKEN}"        # ArgoCD authentication token
+```
+
+Configured via `ARGOCD_URL` and `ARGOCD_AUTH_TOKEN` environment variables or `config.yaml`.
 
 **Example Questions**: 
-- \"What is the sync status of the \'my-app-frontend\' ArgoCD application?\"
-- \"Are all applications in the \'dev\' namespace healthy?\"
+- "What is the sync status of the 'my-app-frontend' ArgoCD application?"
+- "Are all applications in the 'dev' namespace healthy?"
+- "Give me a summary of all ArgoCD applications and their health status."
 
 ## GitHub Actions Connector
 
@@ -53,8 +92,8 @@ Argus AI integrates with various infrastructure components to provide comprehens
 **How it works**: Interacts with the GitHub API to fetch details about workflow runs for a given repository and branch.
 
 **Example Questions**: 
-- \"What was the status of the latest \'deploy\' workflow run on the \'main\' branch of the \'fatoh2/argus-ai\' repository?\"
-- \"List the last 5 workflow runs for the \'build\' job in \'fatoh2/argus-monitor\'.\"
+- "What was the status of the latest 'deploy' workflow run on the 'main' branch of the 'fatoh2/argus-ai' repository?"
+- "List the last 5 workflow runs for the 'build' job in 'fatoh2/argus-monitor'."
 
 ## Argus Monitor Connector (Optional)
 
@@ -63,8 +102,8 @@ Argus AI integrates with various infrastructure components to provide comprehens
 **How it works**: Connects to the Argus Monitor database (read-only replica) to retrieve specific data points.
 
 **Example Questions**: 
-- \"Show me all alerts triggered in the last 24 hours for \'user-123\'.\"
-- \"What is the recent wallet activity for \'0xabc...def\' in the last 12 hours?\"
+- "Show me all alerts triggered in the last 24 hours for 'user-123'."
+- "What is the recent wallet activity for '0xabc...def' in the last 12 hours?"
 
 ## Adding New Connectors
 

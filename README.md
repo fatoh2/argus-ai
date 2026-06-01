@@ -1,6 +1,6 @@
 # Argus AI
 
-Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Anthropic's Claude API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
+Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Google's Gemini API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
 ## Features
 
@@ -18,8 +18,8 @@ Argus AI currently supports read-only integration with:
 
 - **Kubernetes**: Pod status, deployments, events, and resource utilization.
 - **Prometheus**: Metric queries, historical data, and alert status.
-- **Loki**: Log aggregation, searching, and analysis.
-- **ArgoCD**: Application status, synchronization health, and deployment history.
+- **Loki**: Log aggregation, searching, and analysis — including error summarization across time ranges.
+- **ArgoCD**: Application status, synchronization health, and cluster-wide health summaries.
 - **GitHub Actions**: Workflow run status, history, and job details.
 - **Argus Monitor (Optional)**: Alerts and wallet activity from the Argus Monitor platform.
 
@@ -29,13 +29,11 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
 1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
 
-2.  **Clone the repository and initialize submodules**:
+2.  **Clone the repository**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
-    git submodule update --init --recursive
-```
-    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
+    ```
 
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
@@ -46,7 +44,6 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
     For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
-    Alternatively, if `kubeconfig_path` is removed or commented out, the system will automatically attempt to use in-cluster configuration.
 
 4.  **Install dependencies**:
     ```bash
@@ -63,14 +60,34 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
 
     ```bash
-    curl -X POST http://localhost:3000/query \
+    curl -X POST http://localhost:3000/chat \
     -H "Content-Type: application/json" \
     -d '{"query": "What is the status of my web-app deployment?"}'
     ```
 
     Refer to [Example Queries](docs/examples.md) for more example queries.
 
-**Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
+## Configuration
+
+Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) for configuration management. Settings are loaded from:
+
+1. **Environment variables** (highest priority) — set in your shell or a `.env` file
+2. **`config.yaml`** — for non-sensitive defaults and connector endpoint URLs
+
+Key environment variables:
+
+| Variable | Description | Required |
+|---|---|---|
+| `GEMINI_API_KEY` | Google Gemini API key | Yes |
+| `KUBECONFIG_PATH` | Path to kubeconfig (omit for in-cluster) | No |
+| `PROMETHEUS_URL` | Prometheus endpoint | No (default: `http://localhost:9090`) |
+| `LOKI_URL` | Loki endpoint | No (default: `http://localhost:3100`) |
+| `ARGOCD_URL` | ArgoCD endpoint | No (default: `https://localhost:8080`) |
+| `ARGOCD_AUTH_TOKEN` | ArgoCD auth token | No |
+| `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No |
+| `ARGUS_MONITOR_DB_URL` | Argus Monitor read-only DB URL | No |
+
+See [Configuration Reference](docs/configuration.md) for full details.
 
 ## Security Best Practices
 
@@ -93,4 +110,3 @@ Any DevOps team can point argus-ai at their Prometheus+Loki+K8s cluster and quer
 ## License
 
 This project is licensed under the MIT License.
-

@@ -53,6 +53,90 @@ ArgoCD Sync Status: Synced and Healthy.
 Overall: The `payment-gateway` deployment appears healthy.
 ```
 
+## Error Log Analysis (Loki)
+
+**Query**: "Find all error logs for the `auth-service` in the last 30 minutes."
+
+**Expected AI Response**: Argus AI would use the Loki connector's `queryLogs()` method with the label selector for `auth-service`, filtering for error-level logs over the last 30 minutes.
+
+Example Output:
+```
+Error Logs for auth-service (last 30 minutes):
+
+Found 12 error log entries.
+
+Top error messages:
+  - "ERROR: connection refused to database" (5x)
+  - "ERROR: authentication token expired" (4x)
+  - "ERROR: rate limit exceeded for user 12345" (3x)
+
+Timeline:
+  - 14:30:00 UTC - First errors appear (connection refused)
+  - 14:32:00 UTC - Peak error rate (8 errors in 2 minutes)
+  - 14:45:00 UTC - Errors subside after database recovery
+```
+
+## Error Summarization (Loki)
+
+**Query**: "Summarize errors from the last hour across all services."
+
+**Expected AI Response**: Argus AI would use the Loki connector's `summarizeErrors()` method, which queries for error-level logs across all labels and groups them by source and message.
+
+Example Output:
+```
+Found 47 error log entries in the last 1 hour(s).
+
+Top sources:
+  - api-gateway/production: 23 errors
+  - auth-service/production: 12 errors
+  - payment-worker/staging: 8 errors
+  - database/production: 4 errors
+
+Top error messages:
+  - "ERROR: upstream connect error or disconnect/reset before headers" (15x)
+  - "ERROR: connection refused to database" (8x)
+  - "ERROR: request timed out after 30s" (7x)
+  - "ERROR: authentication token expired" (5x)
+```
+
+## ArgoCD Application Status
+
+**Query**: "What is the sync status of the `my-app-frontend` ArgoCD application?"
+
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getAppStatus()` method to fetch the sync and health status of the specified application.
+
+Example Output:
+```
+ArgoCD Application Status: my-app-frontend
+
+  Namespace: default
+  Sync Status: Synced
+  Health Status: Healthy
+  Revision: abc123def456
+```
+
+## ArgoCD Cluster Summary
+
+**Query**: "Give me a summary of all ArgoCD applications and their health status."
+
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getClusterSummary()` method, which lists all applications and highlights any that are out of sync or unhealthy.
+
+Example Output:
+```
+ArgoCD Cluster Summary:
+  Total applications: 12
+  Synced: 10/12
+  Healthy: 9/12
+
+Out of sync applications:
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
+  - payment-worker (sync: OutOfSync, health: Degraded)
+
+Unhealthy applications:
+  - payment-worker (sync: OutOfSync, health: Degraded)
+  - database-backup (sync: Synced, health: Degraded)
+```
+
 ## Postmortem Analysis
 
 **Query**: "Provide a postmortem analysis for the database outage that occurred last Tuesday between 10:00 and 11:00 UTC."
@@ -95,5 +179,5 @@ Failed Job: 'build-and-test'
 Failed Step: 'Run unit tests'
 Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details."
 
-Recommendation: Review the unit test logs for specific failures and address the underlying code issues.
+Recommendation: Review the unit test logs for the failing tests and fix the underlying issues.
 ```

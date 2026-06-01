@@ -7,10 +7,12 @@ This document outlines the security considerations and best practices for deploy
 ### Never Commit Sensitive Data
 - **Always use environment variables** for sensitive information such as API keys, tokens, and database connection strings.
 - The `config.yaml` file should only contain non-sensitive configuration parameters or references to environment variables using the `${ENV_VAR_NAME}` syntax.
-- **Never commit `config.yaml` or `config.example.yaml` with actual credentials to Git.**
+- **Never commit `config.yaml` or `.env` files with actual credentials to Git.**
 
 ### Secure Environment Variable Usage
-- Argus AI leverages the underlying framework (NestJS) and configuration libraries to securely load and validate environment variables.
+- Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) to securely load and validate environment variables.
+- The `ConfigModule` is registered globally in `app.module.ts` with `isGlobal: true`, making `ConfigService` available to all modules.
+- Environment variables are loaded from `.env` files (for local development) or the system environment (for production).
 - Ensure that environment variables are set securely in your deployment environment (e.g., Kubernetes Secrets, CI/CD secret management).
 
 ### Input Validation for Credentials
@@ -18,7 +20,7 @@ This document outlines the security considerations and best practices for deploy
 - Malformed or missing critical credentials will result in application startup failures, preventing insecure operation.
 
 ### `config.example.yaml` Placeholders
-- The `config.example.yaml` file uses generic placeholders (e.g., `<ANTHROPIC_API_KEY_HERE>`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
+- The `config.example.yaml` file uses environment variable references (e.g., `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
 
 ## 2. User Query Security (Prompt Injection Prevention)
 
@@ -38,14 +40,20 @@ This document outlines the security considerations and best practices for deploy
 - Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
 - Ensure that the credentials provided to Argus AI (e.g., Kubernetes service accounts, GitHub tokens) are scoped to the minimum necessary read-only permissions.
 
-### Network Connectivity and Error Handling
-- Argus AI implements robust error handling for network connectivity issues when interacting with external connectors.
-- Temporary network failures are handled with retries, and persistent failures are reported gracefully without exposing sensitive internal information.
+### Health Checks
+- Every connector implements an `isHealthy()` method that verifies connectivity before executing queries.
+- If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
 
 ### Data Volume Management
 - When querying external systems (e.g., Prometheus, Loki), Argus AI employs strategies to manage potentially large data volumes, such as:
     - Specifying time ranges and filtering aggressively in queries.
+    - Capping Loki log queries at 500 lines maximum to prevent context overflow.
+    - Capping Prometheus queries to 24-hour ranges unless explicitly extended.
     - Implementing pagination or sampling where appropriate to prevent memory exhaustion and performance degradation.
+
+### Network Connectivity and Error Handling
+- Argus AI implements robust error handling for network connectivity issues when interacting with external connectors.
+- Temporary network failures are handled with retries, and persistent failures are reported gracefully without exposing sensitive internal information.
 
 ### Rate Limiting and Caching
 - The underlying implementation considers rate limiting for external API calls to prevent overwhelming connected services.

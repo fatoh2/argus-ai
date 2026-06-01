@@ -1,6 +1,22 @@
 # Configuration
 
-This document provides a full reference for configuring Argus AI, including environment variables and how to set up each connector.
+Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) for configuration management. Settings are loaded from environment variables (highest priority) and `config.yaml` (defaults).
+
+## Configuration Loading Order
+
+1. **Environment variables** (highest priority) — set in your shell or a `.env` file
+2. **`config.yaml`** — for non-sensitive defaults and connector endpoint URLs
+
+The `ConfigModule` is registered globally in `app.module.ts`:
+
+```typescript
+ConfigModule.forRoot({
+  isGlobal: true,
+  envFilePath: '.env',
+})
+```
+
+This means all services can inject `ConfigService` directly without importing `ConfigModule` in each feature module.
 
 ## Environment Variables
 
@@ -10,14 +26,16 @@ Argus AI uses environment variables for sensitive information and flexible confi
 
 Here's a list of environment variables used:
 
--   `ANTHROPIC_API_KEY`: Your API key for the Anthropic Claude API. **Required.**
--   `KUBECONFIG_PATH`: (Optional) Path to your Kubernetes kubeconfig file. If not provided, Argus AI will attempt to use in-cluster service account credentials (useful when deployed inside a Kubernetes cluster).
--   `PROMETHEUS_URL`: URL of your Prometheus instance (e.g., `http://localhost:9090`).
--   `LOKI_URL`: URL of your Loki instance (e.g., `http://localhost:3100`).
--   `ARGOCD_URL`: URL of your ArgoCD instance (e.g., `https://argocd.example.com`).
--   `ARGOCD_AUTH_TOKEN`: (Optional) Authentication token for ArgoCD. If not provided, ensure your ArgoCD instance allows unauthenticated read access or use an alternative authentication method configured in your environment.
--   `GITHUB_TOKEN`: Personal Access Token (PAT) for GitHub, with `repo` scope for private repositories or `public_repo` for public ones. **Required for GitHub Actions connector.**
--   `ARGUS_MONITOR_DB_URL`: Database connection string for the Argus Monitor (read-only replica). Example: `postgresql://user:password@host:port/database`.
+| Variable | Description | Required | Default |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Your API key for the Google Gemini API | **Yes** | — |
+| `KUBECONFIG_PATH` | Path to your Kubernetes kubeconfig file | No | In-cluster config |
+| `PROMETHEUS_URL` | URL of your Prometheus instance | No | `http://localhost:9090` |
+| `LOKI_URL` | URL of your Loki instance | No | `http://localhost:3100` |
+| `ARGOCD_URL` | URL of your ArgoCD instance | No | `https://localhost:8080` |
+| `ARGOCD_AUTH_TOKEN` | Authentication token for ArgoCD | No | — |
+| `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No | — |
+| `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
 
 ## Connector Setup
 
@@ -47,6 +65,13 @@ The Kubernetes connector can operate in two modes:
     -   Example: `LOKI_URL=http://localhost:3100`
     -   Similar to Prometheus, if Loki requires authentication, consider using a reverse proxy.
 
+**Available Methods**:
+
+- `isHealthy()` — Health check via `/ready` endpoint
+- `queryRange(options)` — Execute a LogQL range query (limit capped at 500)
+- `queryLogs(labelSelector, start?, end?, level?, limit?)` — Query logs for a specific label selector
+- `summarizeErrors(hours?, labelSelector?)` — Summarize error logs from the last N hours
+
 ### ArgoCD Connector Setup
 
 1.  **URL Configuration**: Set the `ARGOCD_URL` environment variable to the base URL of your ArgoCD instance.
@@ -55,13 +80,18 @@ The Kubernetes connector can operate in two modes:
     -   Set the `ARGOCD_AUTH_TOKEN` environment variable with a valid token. This token should have read-only access to the applications you wish to monitor.
     -   You can generate an ArgoCD authentication token via the ArgoCD CLI or UI.
 
+**Available Methods**:
+
+- `isHealthy()` — Health check via `/api/v1/session/userinfo`
+- `getAppStatus(appName)` — Get sync/health status for a specific application
+- `listApps()` — List all applications with their status
+- `getClusterSummary()` — Get a human-readable cluster health summary
+
 ### GitHub Actions Connector Setup
 
 1.  **Personal Access Token (PAT)**: Create a GitHub Personal Access Token (PAT).
     -   Go to GitHub -> Settings -> Developer settings -> Personal access tokens -> Tokens (classic) -> Generate new token.
-    -   Grant the token the following scopes:
-        -   `repo` (for private repositories)
-        -   `public_repo` (for public repositories)
+    -   Grant the token the `workflow` scope (least privilege) or `repo` scope for private repositories.
     -   Set the `GITHUB_TOKEN` environment variable to your generated PAT.
     -   Example: `GITHUB_TOKEN=ghp_YOUR_GITHUB_PAT`
 
