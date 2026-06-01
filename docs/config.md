@@ -3,6 +3,7 @@
 Argus AI uses a `config.yaml` file for all its operational settings, including API endpoints, credentials, and connector-specific configurations. A template, `config.example.yaml`, is provided for reference. **Never commit your `config.yaml` to Git!**
 
 ## Basic Setup
+1.  Ensure your `config.yaml` is valid YAML. Consider using a YAML linter to catch syntax errors early.
 
 1.  Copy `config.example.yaml` to `config.yaml`:
     ```bash
