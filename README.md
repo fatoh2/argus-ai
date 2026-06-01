@@ -2,7 +2,6 @@
 
 Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Anthropic's Claude API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
-- **Submodule Integration**: The `argus-ai` submodule contains the core backend logic and API for the AI assistant, allowing for modular development and deployment.
 
 ## Features
 
@@ -59,9 +58,9 @@ To get Argus AI up and running in your environment:
     ```
 2.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml` and fill in your API endpoints and credentials.
+    Sensitive fields in `config.example.yaml` are configured via environment variables (e.g., `${ENV_VAR_NAME}`). Set these in your environment or a `.env` file.
     ```bash
     cp config.example.yaml config.yaml
-    # Edit config.yaml with your settings
     ```
     **Never commit `config.yaml` to Git!**
 3.  **Install dependencies**:
