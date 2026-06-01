@@ -89,3 +89,9 @@ We welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.
 ## License
 
 This project is licensed under the MIT License.
+
+## Auto-update rule
+When any PR merges to this repo, update relevant docs to reflect the changes.
+
+## Done when
+Any DevOps team can point argus-ai at their Prometheus+Loki+K8s cluster and query it within 10 minutes.
