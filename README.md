@@ -27,6 +27,13 @@ Argus AI currently supports read-only integration with:
 
 ## Quickstart
 
+## Security Best Practices
+
+- **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
+- **Secure Environment Variables**: Sensitive information is loaded and validated securely from environment variables, minimizing the risk of exposure.
+- **Configuration Validation**: Connector configurations, including API keys and URLs, undergo basic structural and format validation to prevent misconfigurations and potential vulnerabilities.
+
+
 To get Argus AI up and running in your environment:
 
 1.  **Clone the repository**:
