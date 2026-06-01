@@ -1,66 +1,72 @@
-# Argus AI — Your Autonomous Infrastructure Assistant
+# Argus AI
 
 Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Anthropic's Claude API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
-## What it Does
+## Features
 
-- **Natural Language Queries**: Ask questions about your infrastructure in plain English.
-- **Multi-Source Integration**: Gathers data from Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
-- **Incident Analysis**: Quickly diagnose issues, summarize incidents, and suggest next steps.
-- **Proactive Monitoring (Future)**: Identify potential problems before they impact users.
+- **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
+- **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
+- **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
+- **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
+- **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
 
 ## Demo
 
-![Demo GIF Placeholder](https://via.placeholder.com/800x450?text=Demo+GIF+Coming+Soon)
-
-## Supported Connectors
+[Link to demo video/gif]
 
 Argus AI currently supports read-only integration with:
 
-- **Kubernetes**: Pod status, deployments, events.
-- **Prometheus**: Metric queries, historical data.
-- **Loki**: Log aggregation and analysis.
-- **ArgoCD**: Application status and synchronization.
-- **GitHub Actions**: Workflow run status and history.
+- **Kubernetes**: Pod status, deployments, events, and resource utilization.
+- **Prometheus**: Metric queries, historical data, and alert status.
+- **Loki**: Log aggregation, searching, and analysis.
+- **ArgoCD**: Application status, synchronization health, and deployment history.
+- **GitHub Actions**: Workflow run status, history, and job details.
 - **Argus Monitor (Optional)**: Alerts and wallet activity from the Argus Monitor platform.
 
-## Quickstart
+## Quickstart: Get Argus AI Querying in 10 Minutes
 
-To get Argus AI up and running in your environment:
+This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s cluster and start querying within 10 minutes.
 
-1.  **Clone the repository**:
+1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
+
+2.  **Clone the repository**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
+    git submodule update --init --recursive
     ```
-2.  **Configure your connectors**:
-    Copy `config.example.yaml` to `config.yaml` and fill in your API endpoints and credentials.
-    ```bash
-    cp config.example.yaml config.yaml
-    # Edit config.yaml with your settings
-    ```
-    **Never commit `config.yaml` to Git!**
-3.  **Install dependencies**:
+
+3.  **Configure your connectors**:
+    Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
+
+    **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
+    **Never commit `config.yaml` to Git if it contains sensitive information!**
+
+    For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
+    Alternatively, if `kubeconfig_path` is removed or commented out, the system will automatically attempt to use in-cluster configuration.
+
+4.  **Install dependencies**:
     ```bash
     npm install
     ```
-4.  **Run locally (for development/testing)**:
+
+5.  **Run locally (for development/testing)**:
     ```bash
     npm run start:dev
     ```
-    This will start the NestJS backend and the React chat UI.
-5.  **Deploy to Kubernetes**:
-    Refer to the `k8s/ai-service/` Helm chart for production deployment instructions.
+    This will start the NestJS backend, typically on `http://localhost:3000`.
 
-For detailed configuration, connector setup, and example queries, please refer to the `docs/` directory.
+6.  **Start Querying!**
+    Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
 
-## Documentation
+    ```bash
+    curl -X POST http://localhost:3000/query \
+    -H "Content-Type: application/json" \
+    -d '{"query": "What is the status of my web-app deployment?"}'
+    ```
 
-- [Connectors](docs/connectors.md)
-- [Configuration](docs/config.md)
-- [Example Queries](docs/examples.md)
-- [Development Guide](docs/development.md)
+    Refer to [Example Queries](docs/examples.md) for more example queries.
 
-## Contributing
+**Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
 
-We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+## Security Best Practices
