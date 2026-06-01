@@ -29,15 +29,23 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
 1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
 
-2.  **Clone the repository**:
+2.  **Clone the repository and initialize submodules**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
     git submodule update --init --recursive
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
     ```
 
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
+    ```bash\n    cp config.example.yaml config.yaml\n    ```
+    ```bash\n    cp config.example.yaml config.yaml\n    ```
+    ```bash\n    cp config.example.yaml config.yaml\n    ```
+    ```bash\n    cp config.example.yaml config.yaml\n    ```
 
     **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
@@ -70,3 +78,11 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 **Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
 
 ## Security Best Practices
+
+## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+
+## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+
+## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
+
+## Contributing\n\nWe welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.\n
