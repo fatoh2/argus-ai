@@ -12,8 +12,6 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 ## Demo
 
-[Link to demo video/gif]
-
 Argus AI currently supports read-only integration with:
 
 - **Kubernetes**: Pod status, deployments, events, and resource utilization.
@@ -42,8 +40,10 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
-    For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
-    Alternatively, if `kubeconfig_path` is removed or commented out, the system will automatically attempt to use in-cluster configuration.
+    **Important Kubernetes Configuration Note:**
+    If you are deploying Argus AI *in-cluster*, you **must** remove or comment out the `kubeconfig_path` line in `config.yaml`. The application will automatically use the in-cluster service account credentials. If `kubeconfig_path` is present, it will attempt to use that file, which typically won't exist in a containerized environment, leading to connection failures.
+
+    For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details.
 
 4.  **Install dependencies**:
     ```bash
@@ -65,9 +65,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     -d '{"query": "What is the status of my web-app deployment?"}'
     ```
 
-    Refer to [Example Queries](docs/examples.md) for more example queries.
-
-**Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
+    Refer to the `docs/` directory (once populated) for more example queries and detailed connector documentation.
 
 ## Security Best Practices
 
@@ -76,3 +74,11 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 - **Read-Only Connectors**: All Argus AI connectors are designed to be read-only, preventing accidental or malicious modifications to your infrastructure.
 - **Regular Audits**: Periodically review access logs and API usage for any suspicious activity.
 - **Network Segmentation**: Deploy Argus AI in a segmented network environment to limit its access to critical systems.
+
+## Contributing
+
+See `CONTRIBUTING.md` for guidelines on how to contribute to Argus AI.
+
+## Demo GIF
+
+A demo GIF showcasing Argus AI in action will be added here soon!

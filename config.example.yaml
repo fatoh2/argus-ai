@@ -1,9 +1,11 @@
 claude:
-  api_key: "${ANTHROPIC_API_KEY}" # Populated via environment variable
+  api_key: "" # Populated via environment variable
   model: "claude-3-sonnet-20240229"
 
 kubernetes:
-  kubeconfig_path: "~/.kube/config" # Supports ~ expansion and environment variables (e.g., "${KUBECONFIG_PATH}") or leave empty for in-cluster
+  # kubeconfig_path: "~/.kube/config" # Supports ~ expansion and environment variables (e.g., "") or leave empty for in-cluster
+  # For in-cluster deployments, remove or comment out the kubeconfig_path.
+  # The application will automatically use the in-cluster service account.
 
 prometheus:
   url: "http://localhost:9090"
@@ -13,10 +15,10 @@ loki:
 
 argocd:
   url: "https://argocd.example.com"
-  token: "${ARGOCD_AUTH_TOKEN}" # Populated via environment variable
+  token: "" # Populated via environment variable
 
 github_actions:
-  token: "${GITHUB_TOKEN}" # Populated via environment variable
+  token: "" # Populated via environment variable
 
 argus_monitor:
-  database_url: "${ARGUS_MONITOR_DB_URL}" # Populated via environment variable
+  database_url: "" # Populated via environment variable
