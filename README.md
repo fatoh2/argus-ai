@@ -13,7 +13,6 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 ## Demo
 
-![Demo GIF Coming Soon (Expected by end of sprint)](https://via.placeholder.com/800x450?text=Demo+GIF+Coming+Soon)
 
 ## Supported Connectors
 
@@ -46,6 +45,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
     For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
+    Alternatively, if `kubeconfig_path` is removed or commented out, the system will automatically attempt to use in-cluster configuration.
 
 4.  **Install dependencies**:
     ```bash
@@ -68,6 +68,8 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```
 
     Refer to [Example Queries](docs/examples.md) for more example queries.
+
+**Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
 
 
 ## Security Best Practices

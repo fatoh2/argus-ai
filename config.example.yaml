@@ -13,7 +13,7 @@ loki:
 
 argocd:
   url: "https://argocd.example.com"
-  token: "${ARGOCD_AUTH_TOKEN}" # Populated via environment variable
+  token: "${ARGOCD_AUTH_TOKEN}"GOCD_AUTH_TOKEN}" # Populated via environment variable
 
 github_actions:
   token: "${GITHUB_TOKEN}" # Populated via environment variable
