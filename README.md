@@ -29,18 +29,21 @@ Argus AI currently supports read-only integration with:
 
 This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s cluster and start querying within 10 minutes.
 
-1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
+1.  **Prerequisites**: Ensure you have `git`, Node.js (v18+), and npm installed.
 
-2.  **Clone the repository**:
+2.  **Clone the repository and initialize submodules**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
     git submodule update --init --recursive
     ```
+    *Note: Submodules are used to include other Git repositories as subdirectories within this project, ensuring all necessary dependencies are available for a complete build and runtime environment.*
 
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
-
+    ```bash
+    cp config.example.yaml config.yaml
+    ```
     **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
@@ -74,13 +77,15 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 ## Security Best Practices
 
 - **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
-- **Secure Environment Variables**: Sensitive information is loaded and validated securely from environment variables, minimizing the risk of exposure.
-- **Configuration Validation**: Connector configurations, including API keys and URLs, undergo basic structural and format validation to prevent misconfigurations and potential vulnerabilities.
-- **Least Privilege**: When configuring GitHub tokens, prefer the `repo` scope over broader scopes unless broader access is strictly necessary.
+- **Secure Environment Variables**: Sensitive information is loaded and validated securely from environment variables, preventing hardcoding of credentials.
+- **Least Privilege Access**: Connectors are designed to operate with the minimum necessary permissions, adhering to the principle of least privilege to limit potential impact of compromise.
+- **Read-Only Operations**: Argus AI is strictly read-only. It will never execute commands or modify your infrastructure, ensuring a safe diagnostic and monitoring environment.
+- **Auditable Interactions**: All interactions and queries are logged for auditing and compliance purposes.
 
-## Full Documentation
+## Contributing
 
-- [Connectors](docs/connectors.md) — How each connector works (K8s, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor)
-- [Configuration](docs/config.md) — Full config reference, env vars, connector setup
-- [Example Queries](docs/examples.md) — Example queries and AI responses (postmortem, incident summary, pod restart analysis)
-- [Development Guide](docs/development.md) — Adding new connectors, running locally, testing
+We welcome contributions! Please see our `CONTRIBUTING.md` for guidelines.
+
+## License
+
+This project is licensed under the MIT License.

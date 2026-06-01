@@ -1,22 +1,31 @@
+# Claude API configuration
 claude:
-  api_key: "${ANTHROPIC_API_KEY}" # Populated via environment variable
-  model: "claude-3-sonnet-20240229"
+  api_key: "${ANTHROPIC_API_KEY}" # Your Anthropic API key (populated via environment variable)
+  model: "claude-3-sonnet-20240229" # The Claude model to use (e.g., claude-3-sonnet-20240229, claude-3-opus-20240229)
 
+# Kubernetes connector configuration
 kubernetes:
-  kubeconfig_path: "~/.kube/config" # Supports ~ expansion and environment variables (e.g., "${KUBECONFIG_PATH}") or leave empty for in-cluster
+  kubeconfig_path: "~/.kube/config" # Path to your kubeconfig file, or leave empty for in-cluster configuration. Supports ~ expansion and environment variables (e.g., "${KUBECONFIG_PATH}")
 
+# Prometheus connector configuration
 prometheus:
-  url: "http://localhost:9090"
+  url: "http://localhost:9090" # URL of your Prometheus instance
 
+# Loki connector configuration
 loki:
-  url: "http://localhost:3100"
+  url: "http://localhost:3100" # URL of your Loki instance
 
+# ArgoCD connector configuration
 argocd:
-  url: "https://argocd.example.com"
-  token: "${ARGOCD_AUTH_TOKEN}"GOCD_AUTH_TOKEN}" # Populated via environment variable
+  url: "https://argocd.example.com" # URL of your ArgoCD instance
+  token: "${ARGOCD_AUTH_TOKEN}" # ArgoCD authentication token (populated via environment variable)
 
+# GitHub Actions connector configuration
 github_actions:
-  token: "${GITHUB_TOKEN}" # Populated via environment variable
+  token: "${GITHUB_TOKEN}" # GitHub Personal Access Token with workflow scope (populated via environment variable)
 
+# Argus Monitor connector configuration (Optional)
+# Connects to the Argus Monitor platform to fetch alerts and wallet activity.
 argus_monitor:
-  database_url: "${ARGUS_MONITOR_DB_URL}" # Populated via environment variable
+  database_url: "${ARGUS_MONITOR_DB_URL}" # Database URL for the Argus Monitor PostgreSQL instance (populated via environment variable)
+  api_key: "${ARGUS_MONITOR_API_KEY}" # API key for Argus Monitor (if applicable, populated via environment variable)
