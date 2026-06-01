@@ -2,7 +2,6 @@
 
 Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Anthropic's Claude API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
-
 ## Features
 
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
@@ -13,6 +12,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 ## Demo
 
+![Demo GIF Placeholder](https://via.placeholder.com/800x450?text=Demo+GIF+Coming+Soon)
 
 ## Supported Connectors
 
@@ -71,7 +71,6 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
 **Note**: The full documentation links (e.g., `docs/examples.md`, `docs/connectors.md`) refer to future documentation that will be populated in subsequent sprints. For now, please refer to the `README.md` for initial setup and usage instructions.
 
-
 ## Security Best Practices
 
 - **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
@@ -85,7 +84,3 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 - [Configuration](docs/config.md) — Full config reference, env vars, connector setup
 - [Example Queries](docs/examples.md) — Example queries and AI responses (postmortem, incident summary, pod restart analysis)
 - [Development Guide](docs/development.md) — Adding new connectors, running locally, testing
-
-## Contributing
-
-We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.

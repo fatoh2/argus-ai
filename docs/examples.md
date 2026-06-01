@@ -93,24 +93,5 @@ Timestamp: 2023-10-27 10:15:30 UTC
 
 Failed Job: 'build-and-test'
 Failed Step: 'Run unit tests'
-Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details."
-
-Recommendation: Review the logs for the 'Run unit tests' step in workflow run 1234567890 to identify the specific test failures.
-```
-
-## Pod Restart Analysis (Advanced)
-
-**Query**: "Analyze the restarts of `nginx-ingress` pods in the `ingress-nginx` namespace over the last 7 days, focusing on resource-related issues."
-
-**Expected AI Response**: Argus AI would query Kubernetes for all restart events of `nginx-ingress` pods in the specified namespace and timeframe. It would specifically look for termination reasons like `OOMKilled` (Out Of Memory Killed) or `ContainerCreating` errors related to resource limits. It would also check Prometheus for historical CPU and memory usage of these pods to identify if they consistently hit resource limits before restarting.
-
-Example Output:
-```
-Analysis of nginx-ingress pod restarts (ingress-nginx namespace) - Last 7 days:
-
-Observed 12 restarts across 3 different nginx-ingress pods. 8 of these restarts were due to 'OOMKilled' (Out Of Memory Killed) termination reason, primarily occurring during peak traffic hours (18:00-22:00 UTC).
-
-Prometheus metrics confirm that memory usage for these pods frequently exceeded their configured limits (256Mi) just prior to the 'OOMKilled' events. CPU utilization also showed spikes, but memory appears to be the primary constraint.
-
-Recommendation: Increase the memory limits for the nginx-ingress deployment in the ingress-nginx namespace. Consider setting a higher request value as well to ensure adequate resources are allocated during startup.
+Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details.
 ```
