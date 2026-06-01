@@ -1,9 +1,10 @@
-# Configuration Reference
+# Configuration
 
-Argus AI uses a `config.yaml` file for all its operational settings, including API endpoints, credentials, and connector-specific configurations. A template, `config.example.yaml`, is provided for reference. **Never commit your `config.yaml` to Git!**
+Argus AI uses a `config.yaml` file for all its operational settings. This file defines how Argus AI connects to your various infrastructure components (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor) and configures the underlying Large Language Model (LLM).
 
-## Basic Setup
+A `config.example.yaml` is provided in the root of the repository, which you should copy to `config.yaml` and modify.
 
+<<<<<<< HEAD
 Argus AI performs basic validation on API keys and tokens to ensure their presence and correct format.
 1.  Ensure your `config.yaml` is valid YAML. Consider using a YAML linter to catch syntax errors early.
 2.  Copy `config.example.yaml` to `config.yaml`:
@@ -11,15 +12,34 @@ Argus AI performs basic validation on API keys and tokens to ensure their presen
     cp config.example.yaml config.yaml
     ```
 3.  Edit `config.yaml` to fill in your specific values for API keys, endpoints, and other settings.
+=======
+```bash
+cp config.example.yaml config.yaml
+```
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
 
-## Environment Variables
+**Important Security Note:** Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${ANTHROPIC_API_KEY}`). **Never commit `config.yaml` to Git if it contains sensitive information!**
 
+<<<<<<< HEAD
 Sensitive information like API keys should ideally be provided via environment variables, especially in production environments. Values provided via environment variables will override those specified in `config.yaml`. The `config.yaml` can reference environment variables using the `${ENV_VAR_NAME}` syntax.
+=======
+## Configuration Structure
+
+The `config.yaml` is structured into several top-level sections, each corresponding to a specific component or connector.
+
+### `claude`
+
+Configuration for the Anthropic Claude API.
+
+-   `api_key`: Your Anthropic API key. **Required.** Populated via environment variable (e.g., `${ANTHROPIC_API_KEY}`).
+-   `model`: The Claude model to use (e.g., `claude-3-sonnet-20240229`, `claude-3-opus-20240229`). Defaults to `claude-3-sonnet-20240229`.
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
 
 Example:
 
 ```yaml
 claude:
+<<<<<<< HEAD
   api_key: ${ANTHROPIC_API_KEY}
   model: claude-3-sonnet-20240229
 
@@ -44,40 +64,77 @@ github_actions:
 
 argus_monitor:
   database_url: ${ARGUS_MONITOR_DB_URL} # Read-only replica
+=======
+  api_key: "${ANTHROPIC_API_KEY}"
+  model: "claude-3-sonnet-20240229"
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
 ```
-
-## Connector-Specific Configuration
-
-Each connector has its own section in `config.yaml`.
-
-### `claude`
-
-- `api_key`: Your Anthropic Claude API key. **Highly recommended to use an environment variable.**
-- `model`: The Claude model to use (e.g., `claude-sonnet-4-6`).
 
 ### `kubernetes`
 
-- `kubeconfig_path`: (Optional) Path to your kubeconfig file. If not provided, it will attempt to use an in-cluster service account.
+Configuration for the Kubernetes connector.
+
+-   `kubeconfig_path`: Path to your kubeconfig file. Supports `~` expansion and environment variables (e.g., `${KUBECONFIG_PATH}`). If left empty, Argus AI will attempt to use in-cluster configuration (suitable when running inside a Kubernetes cluster).
+
+Example:
+
+```yaml
+kubernetes:
+  kubeconfig_path: "~/.kube/config"
+```
 
 ### `prometheus`
 
-- `url`: The URL of your Prometheus instance.
+Configuration for the Prometheus connector.
+
+-   `url`: URL of your Prometheus instance (e.g., `http://localhost:9090`, `https://prometheus.example.com`).
+
+Example:
+
+```yaml
+prometheus:
+  url: "http://localhost:9090"
+```
 
 ### `loki`
 
-- `url`: The URL of your Loki instance.
+Configuration for the Loki connector.
+
+-   `url`: URL of your Loki instance (e.g., `http://localhost:3100`, `https://loki.example.com`).
+
+Example:
+
+```yaml
+loki:
+  url: "http://localhost:3100"
+```
 
 ### `argocd`
 
-- `url`: The URL of your ArgoCD instance.
-- `token`: (Optional) An authentication token for ArgoCD. **Highly recommended to use an environment variable.**
+Configuration for the ArgoCD connector.
+
+-   `url`: URL of your ArgoCD instance (e.g., `https://argocd.example.com`).
+-   `token`: ArgoCD authentication token. **Required.** Populated via environment variable (e.g., `${ARGOCD_AUTH_TOKEN}`).
+
+Example:
+
+```yaml
+argocd:
+  url: "https://argocd.example.com"
+  token: "${ARGOCD_AUTH_TOKEN}"
+```
 
 ### `github_actions`
 
+<<<<<<< HEAD
 - `token`: A GitHub Personal Access Token with `workflow` scope. **Highly recommended to use an environment variable.**
+=======
+Configuration for the GitHub Actions connector.
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
 
-### `argus_monitor`
+-   `token`: GitHub Personal Access Token with `workflow` scope. **Required.** Populated via environment variable (e.g., `${GITHUB_TOKEN}`).
 
+<<<<<<< HEAD
 - `database_url`: The database URL for the Argus Monitor PostgreSQL instance. **Highly recommended to use an environment variable.**
 - `api_key`: (Optional) API key for Argus Monitor (if applicable). **Highly recommended to use an environment variable.**
 
@@ -97,11 +154,15 @@ Argus AI is designed to handle various operational challenges:
 -   **LLM Processing**: The time taken for LLM processing is directly proportional to the complexity and volume of the data provided. Efficient data retrieval and summarization are key to maintaining responsiveness.
 
 ## Example `config.example.yaml`
+=======
+Example:
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
 
 This section provides a full example of the `config.example.yaml` structure.
 Remember to copy this to `config.yaml` and fill in your actual values.
 
 ```yaml
+<<<<<<< HEAD
 claude:
   api_key: "${ANTHROPIC_API_KEY}"
   model: "claude-3-sonnet-20240229"
@@ -128,4 +189,24 @@ github_actions:
 argus_monitor:
   database_url: "${ARGUS_MONITOR_DB_URL}"
   api_key: "${ARGUS_MONITOR_API_KEY}"
+=======
+github_actions:
+  token: "${GITHUB_TOKEN}"
+>>>>>>> 84f09811abbbb75865a70f4a63e3c0f7294cf23e
 ```
+
+### `argus_monitor` (Optional)
+
+Configuration for the Argus Monitor connector. This connector allows Argus AI to fetch alerts and wallet activity from an Argus Monitor instance.
+
+-   `database_url`: Database URL for the Argus Monitor PostgreSQL instance. **Required.** Populated via environment variable (e.g., `${ARGUS_MONITOR_DB_URL}`).
+-   `api_key`: API key for Argus Monitor (if applicable). Populated via environment variable (e.g., `${ARGUS_MONITOR_API_KEY}`).
+
+Example:
+
+```yaml
+argus_monitor:
+  database_url: "${ARGUS_MONITOR_DB_URL}"
+  api_key: "${ARGUS_MONITOR_API_KEY}"
+```
+
