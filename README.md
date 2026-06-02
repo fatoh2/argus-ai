@@ -10,7 +10,6 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP to prevent abuse.
-- **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP to prevent abuse.
 
 ## Demo
 
