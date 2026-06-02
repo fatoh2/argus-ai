@@ -1,4 +1,4 @@
-version: 2
+version: "3.8"
 services:
   argus-ai:
     build:
@@ -6,9 +6,12 @@ services:
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
+    env_file:
+      - .env
     environment:
       NODE_ENV: development
       PORT: 3000
     volumes:
-      - .:/opt/argus/workspaces/argus-ai/argus-ai
+      - .:/usr/src/app
+      - /usr/src/app/node_modules
     command: npm run start:dev
