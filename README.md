@@ -1,6 +1,6 @@
 # Argus AI
 
-Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Google's Gemini API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
+Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Google's Gemini 1.5 Flash API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
 ## Features
 
@@ -11,7 +11,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
 - **Input Validation & Sanitization**: The `/chat` endpoint validates message length (max 4000 characters), strips control characters and null bytes, and rejects empty messages with a `400 Bad Request`.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
-- **Real AI Responses**: The `/chat` endpoint is wired to the LLM service — queries return real AI-generated answers powered by Google Gemini, not stubs. Chat history is preserved across turns for contextual conversations.
+- **Real AI Responses**: The `/chat` endpoint is wired to the LLM service — queries return real AI-generated answers powered by Google Gemini 1.5 Flash, not stubs. Chat history is preserved across turns for contextual conversations.
 - **LLM Error Resilience**: LLM calls have a 30-second hard timeout (returns `504 Gateway Timeout`), automatic retry on 5xx errors (up to 1 retry), and a 50k-token prompt limit guard that truncates oldest history first. A `GET /health/llm` endpoint provides LLM health monitoring with latency tracking.
 - **LLM Error Classification**: LLM errors are mapped to appropriate HTTP status codes — rate limits return `429 Too Many Requests`, auth failures return `401 Unauthorized`, and server errors return `502 Bad Gateway`.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
@@ -72,7 +72,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     -d '{"message": "What is the status of my web-app deployment?"}'
     ```
 
-    The response is a real AI-generated answer from Google Gemini, synthesized from your connected infrastructure data.
+    The response is a real AI-generated answer from Google Gemini 1.5 Flash, synthesized from your connected infrastructure data.
 
     **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
 
@@ -95,30 +95,81 @@ Key environment variables:
 | `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
 | `LLM_MAX_PROMPT_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
-| `KUBECONFIG_PATH` | Path to kubeconfig (omit for in-cluster) | No | In-cluster config |
-| `PROMETHEUS_URL` | Prometheus endpoint | No | `http://localhost:9090` |
-| `LOKI_URL` | Loki endpoint | No | `http://localhost:3100` |
-| `ARGOCD_URL` | ArgoCD endpoint | No | `https://localhost:8080` |
+| `KUBECONFIG_PATH` | Path to kubeconfig file | No | In-cluster config |
+| `PROMETHEUS_URL` | Prometheus URL | No | `http://localhost:9090` |
+| `LOKI_URL` | Loki URL | No | `http://localhost:3100` |
+| `ARGOCD_URL` | ArgoCD URL | No | `https://localhost:8080` |
 | `ARGOCD_AUTH_TOKEN` | ArgoCD auth token | No | — |
 | `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No | — |
-| `ARGUS_MONITOR_DB_URL` | Argus Monitor read-only DB URL | No | — |
+| `ARGUS_MONITOR_DB_URL` | Argus Monitor DB connection string | No | — |
 
-See [Configuration Reference](docs/configuration.md) for full details.
+## Architecture
 
-## API Endpoints
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  User/Client │────▶│  Chat API    │────▶│  LlmService     │
+│  (curl, UI)  │     │  POST /chat  │     │  (Gemini 1.5    │
+└─────────────┘     └──────────────┘     │   Flash)        │
+                                         └────────┬────────┘
+                                                  │
+                    ┌─────────────────────────────┼─────────────────────────┐
+                    │                             │                         │
+                    ▼                             ▼                         ▼
+          ┌─────────────────┐          ┌──────────────────┐      ┌──────────────────┐
+          │  K8s Connector   │          │  Prometheus       │      │  Loki Connector   │
+          │  (read-only)     │          │  Connector        │      │  (read-only)      │
+          └─────────────────┘          │  (read-only)      │      └──────────────────┘
+                                        └──────────────────┘
+```
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/chat` | Send a natural language query (rate-limited: 20 req/min/IP) |
-| `POST` | `/llm/run-tool-use-loop` | Direct LLM tool-use loop access |
-| `GET` | `/health/llm` | LLM health check — returns `{ ok: boolean, latencyMs: number }` |
+## API
 
-## Security Best Practices
+### `POST /chat`
 
-- **User Queries**: All user messages are sanitized (control characters stripped), validated (max 4000 chars), and rejected if empty after sanitization.
-- **Connector Credentials**: All connectors use environment variables for sensitive fields. Never commit `config.yaml` or `.env` files with actual credentials.
-- **LLM Logging**: The LLM service never logs full prompt or response content. All log output is sanitized via `sanitizeForLog()` which redacts API keys, tokens, URLs, and JSON secret fields.
-- **Read-Only Access**: All connectors are strictly read-only. Ensure credentials are scoped to the minimum necessary permissions.
+Send a natural language query about your infrastructure.
+
+**Request:**
+```json
+{
+  "message": "What is the status of my web-app deployment?"
+}
+```
+
+**Response:**
+```json
+{
+  "response": "The web-app deployment in the production namespace has 3/3 pods running. All pods are healthy with no recent restarts."
+}
+```
+
+**Rate Limiting**: 20 requests per minute per IP. Exceeding this returns `429 Too Many Requests` with a `Retry-After` header.
+
+**Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
+
+### `GET /health/llm`
+
+Check if the LLM service is responsive.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "latencyMs": 1234
+}
+```
+
+## Development
+
+See [Development Guide](docs/development.md) for setup instructions, project structure, and contribution guidelines.
+
+## Configuration Reference
+
+- [Configuration Guide](docs/configuration.md) — environment variables and config.yaml
+- [Connector Setup](docs/connectors.md) — per-connector configuration details
+
+## Security
+
+See [Security Guide](docs/security.md) for security best practices, input validation, and safe logging.
 
 ## License
 

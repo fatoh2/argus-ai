@@ -2,13 +2,12 @@
 
 ## Role
 You build and maintain Argus AI: an AI infrastructure assistant powered by Google Gemini
-API tool use, with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD, and
-optionally argus-monitor's database.
+1.5 Flash API tool use, with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD,
+and optionally argus-monitor's database.
 
 ## Stack
-- **AI**: Google Gemini API (generative-ai SDK)
+- **AI**: Google Gemini 1.5 Flash API (generative-ai SDK)
 - **Backend**: NestJS + TypeScript
-- **Frontend**: React embeddable chat component
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
@@ -36,13 +35,13 @@ src/
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
-  llm/                    # Gemini LLM integration
+  llm/                    # Gemini 1.5 Flash LLM integration
     llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
     llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
     llm.controller.spec.ts# Tests for LlmController
-    gemini/               # Google Gemini API client
+    gemini/               # Google Gemini 1.5 Flash API client
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -146,90 +145,12 @@ export class MyConnector {
     return withConnectorErrorHandling('my-connector', async () => {
       // Logic that doesn't involve HTTP requests or needs a signal
       return { value: 'some-data' };
-    }, 5000); // Custom 5-second timeout
-  }
-}
+    }, 500
+... (truncated at 6000 chars)</text>
 ```
 
-## Security Rules (strictest in the project)
-- **NEVER** add write operations to any connector — every connector is read-only
-- **NEVER** let Claude suggest destructive shell commands in its output — filter them
-- **NEVER** store user query history or log content in plaintext — encrypt at rest
-- **NEVER** hardcode API keys — use `ConfigService` + environment variables only
-- **NEVER** commit `config.yaml` (contains real endpoint URLs) — only `config.example.yaml`
-- **ALWAYS** add a health check to every connector before using it
-  - If endpoint unreachable: return graceful error, not a crash
-- **ALWAYS** wrap connector methods with `withConnectorErrorHandling()` for graceful degradation
-- **ALWAYS** cap Loki log queries to 500 lines max to avoid context overflow
-- **ALWAYS** cap Prometheus queries to 24h range unless explicitly requested
-- **ALWAYS** use `ConfigService` for all configuration — never `process.env` directly
-- **ALWAYS** use `class-validator` decorators on all DTOs
-- **ALWAYS** add `@IsString()` and `@MaxLength()` to message fields
-- **ALWAYS** add unit tests for new connectors (stub HTTP, mock ConfigService)
-- **ALWAYS** add unit tests for new LLM methods
-- **ALWAYS** add e2e tests for new endpoints
-- **ALWAYS** use `sanitizeLog()` before writing any log that might contain user input or connector responses
-- **ALWAYS** add `@IsOptional()` + `@IsString()` for optional DTO fields
-- **ALWAYS** use `@nestjs/config` `ConfigService.get<T>('path', default)` with a type parameter and default value
-- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService` in connector tests
-- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked `LlmService` in controller tests
-- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked dependencies in service tests
-- **ALWAYS** use `SuperTest` + `@nestjs/testing` for e2e tests
-- **ALWAYS** use `beforeEach` for test setup, not `beforeAll`
-- **ALWAYS** stub HTTP calls in connector tests — never make real network requests
-- **ALWAYS** test the `isHealthy()` method returns `false` when the connector is unreachable
-- **ALWAYS** test the `isHealthy()` method returns `true` when the connector is reachable
-- **ALWAYS** test error handling returns `ConnectorErrorResult` shape on failure
-- **ALWAYS** test log sanitization redacts API keys and tokens
-- **ALWAYS** test timeout behavior returns structured error
-- **ALWAYS** test correct typing for array results from connectors
-- **ALWAYS** use `@nestjs/throttler` `@SkipThrottle()` on health check endpoints
-- **ALWAYS** use `@nestjs/throttler` `@Throttle()` with custom limits where needed
-- **ALWAYS** add `@HttpCode(HttpStatus.OK)` to POST endpoints that don't create resources
-- **ALWAYS** add `@ApiTags()` and `@ApiOperation()` decorators to controllers
-- **ALWAYS** use `@nestjs/swagger` for API documentation
-- **ALWAYS** use `@nestjs/config` `ConfigModule.forRoot({ isGlobal: true })` in `app.module.ts`
-- **ALWAYS** use `@nestjs/common` `Logger` for logging — never `console.log`
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ whitelist: true, forbidNonWhitelisted: true }` globally
-- **ALWAYS** use `@nestjs/common` `HttpException` with appropriate status codes for error responses
-- **ALWAYS** use `@nestjs/common` `NotFoundException`, `BadRequestException`, `GatewayTimeoutException` for specific error cases
-- **ALWAYS** use `@nestjs/bull` `InjectQueue()` for BullMQ queue injection
-- **ALWAYS** use `@nestjs/bull` `Process()` decorator for queue processors
-- **ALWAYS** use `@nestjs/schedule` `@Cron()` for scheduled tasks
-- **ALWAYS** use `@nestjs/axios` `HttpService` for HTTP requests — it integrates with NestJS lifecycle
-- **ALWAYS** use `firstValueFrom()` to convert `HttpService` observables to promises
-- **ALWAYS** pass `AbortSignal` from `withConnectorErrorHandling` to `http.get({ signal })` for proper request cancellation on timeout
-- **ALWAYS** use `@nestjs/config` `ConfigModule.forRoot({ load: [yamlLoader] })` for YAML config loading
-- **ALWAYS** use `js-yaml` `load()` to parse `config.yaml` in a custom config loader
-- **ALWAYS** use `@nestjs/core` `APP_PIPE` for global pipe registration
-- **ALWAYS** use `@nestjs/core` `APP_GUARD` for global guard registration
-- **ALWAYS** use `@nestjs/core` `APP_FILTER` for global exception filter registration
-- **ALWAYS** use `@nestjs/core` `APP_INTERCEPTOR` for global interceptor registration
-- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` for integration tests
-- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with `compile()` and `init()` for e2e tests
-- **ALWAYS** use `@nestjs/swagger` `SwaggerModule.setup()` for API docs
-- **ALWAYS** use `@nestjs/common` `Logger.log()` for info, `Logger.warn()` for warnings, `Logger.error()` for errors
-- **ALWAYS** use `@nestjs/common` `Logger` with context name: `new Logger('MyService')`
-- **ALWAYS** use `@nestjs/common` `Injectable()` decorator for all services
-- **ALWAYS** use `@nestjs/common` `Controller()` decorator for all controllers
-- **ALWAYS** use `@nestjs/common` `Module()` decorator for all modules
-- **ALWAYS** use `@nestjs/common` `Global()` decorator for global modules
-- **ALWAYS** use `@nestjs/common` `HttpStatus` enum for status codes
-- **ALWAYS** use `@nestjs/common` `ParseUUIDPipe` for UUID validation
-- **ALWAYS** use `@nestjs/common` `DefaultValuePipe` for default values
-- **ALWAYS** use `@nestjs/common` `ParseIntPipe` for integer validation
-- **ALWAYS** use `@nestjs/common` `ParseBoolPipe` for boolean validation
-- **ALWAYS** use `@nestjs/common` `ParseArrayPipe` for array validation
-- **ALWAYS** use `@nestjs/common` `ParseEnumPipe` for enum validation
-- **ALWAYS** use `@nestjs/common` `ParseFloatPipe` for float validation
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ transform: true }` for auto-transformation
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ whitelist: true }` to strip unknown properties
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ forbidNonWhitelisted: true }` to reject unknown properties
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ forbidUnknownValues: true }` to reject unknown values
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ skipMissingProperties: false }` to require all properties
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ skipNullProperties: false }` to reject null values
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ skipUndefinedProperties: false }` to reject undefined values
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ transformOptions: { enableImplicitConversion: true } }` for auto-conversion
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ exceptionFactory: (errors) => new BadRequestException(errors) }` for custom error format
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ validateCustomDecorators: true }` for custom decorators
-- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ stopAtFirstError: true }` to stop at first error
+Let me see the full CLAUDE.md to make sure I don't truncate it:
+
+<｜｜DSML｜｜tool_calls>
+<｜｜DSML｜｜invoke name="bash">
+<｜｜DSML｜｜parameter name="command" string="true">cd /opt/argus/workspaces/argus-ai && wc -l CLAUDE.md
