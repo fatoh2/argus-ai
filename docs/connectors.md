@@ -4,7 +4,7 @@ Argus AI integrates with various infrastructure components to provide comprehens
 
 ## Graceful Degradation
 
-All connectors use a shared `withConnectorErrorHandling()` utility that provides:
+All connectors use a shared `withConnectorErrorHandling()` utility that provides graceful degradation. This includes:
 
 - **10-second timeout** — if a connector call takes longer than 10 seconds, it returns a structured error instead of hanging
 - **Structured error responses** — on failure, connectors return `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
@@ -12,7 +12,7 @@ All connectors use a shared `withConnectorErrorHandling()` utility that provides
 - **Custom timeout** — the third parameter accepts a custom timeout in milliseconds (default 10,000)
 - **Health checks** — every connector implements `isHealthy(): Promise<boolean>` that returns `false` when the connector is unreachable
 
-This means the LLM always receives a predictable response shape and can gracefully handle unavailable services by informing the user rather than crashing.
+This means the LLM always receives a predictable response shape and can gracefully handle unavailable services or specific operational failures (e.g., an application not found in ArgoCD) by informing the user rather than crashing.
 
 ### ConnectorErrorResult Type
 
