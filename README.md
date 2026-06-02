@@ -101,14 +101,21 @@ See [Configuration Reference](docs/configuration.md) for full details.
 ## Security Best Practices
 
 - **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks. The `/chat` endpoint strips control characters and null bytes before processing.
-- **Input Validation**: The `/chat` endpoint validates message length (max 4000 characters) and strips control characters. Empty messages are rejected with a `400 Bad Request`. A global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` ensures only expected fields are accepted.
-- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring, and a `Retry-After` header is set on `429` responses.
+- **Input Validation**: The `/chat` endpoint uses `class-validator` DTOs to enforce message length (max 4000 characters) and type constraints. Empty messages are rejected with a `400 Bad Request`. A global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` ensures only expected fields are accepted.
+- **Rate Limiting**: The `/chat` endpoint is protected by a rate limit of 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring, and a `Retry-After` header is set on `429` responses.
 - **Safe Logging**: All connector error logs automatically redact API keys, bearer tokens, and secrets using a regex pattern before writing to the console. Error logs include connector name, error type, and duration — never credentials.
 - **Graceful Degradation**: All connector methods are wrapped with `withConnectorErrorHandling()` which provides a 10-second timeout, structured error responses (`{ error: "...", data: null }`), and safe logging.
 - **Read-Only Access**: Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor). Ensure that the credentials provided are scoped to the minimum necessary read-only permissions.
 - **Health Checks**: Every connector implements an `isHealthy()` method that verifies connectivity before executing queries. If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
+- **No Hardcoded Secrets**: API keys and other sensitive credentials are never hardcoded. They are loaded from environment variables via NestJS `ConfigService`.
+- **No `config.yaml` in Git**: The `config.yaml` file, which may contain sensitive endpoint URLs or default values, is explicitly excluded from Git. Only `config.example.yaml` is committed as a template.
+- **Limited Data Access**: Connectors are designed to access only the minimum necessary data to fulfill their function. For example, Loki queries are capped at 500 lines, and Prometheus queries are capped at a 24-hour range by default.
+- **No Destructive Commands**: The AI's output is filtered to prevent it from suggesting or executing any destructive shell commands.
+- **Encrypted History**: User query history and log content are never stored in plaintext. They are encrypted at rest to protect user privacy and data security.
 
 See [Security Best Practices](docs/security.md) for more details.
+
+We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## Architecture
 
@@ -134,6 +141,8 @@ src/
   llm/                    # LLM integration (Gemini API)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
 
 ## Development
 

@@ -37,6 +37,12 @@ src/
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
   llm/                    # Gemini LLM integration
+    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
+    llm.service.ts        # LlmService — tool-use loop with timeout, retry, token guard
+    llm.service.spec.ts   # Tests for LlmService
+    llm.controller.ts     # GET /health/llm — LLM health check endpoint
+    llm.controller.spec.ts# Tests for LlmController
+    gemini/               # Google Gemini API client
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -139,6 +145,15 @@ get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connecto
 - **ALWAYS** strip control characters and null bytes from user input before processing
 - **ALWAYS** use `sanitizeLog()` to redact credentials from error logs
 
+## PR Description Format
+Every PR you open must include:
+- What changed and why (link to issue)
+- How to test
+- Any risks or migration steps
+- Checklist: tests passing, CLAUDE.md rules followed, no secrets committed
+- Safe logging implemented? (yes/no — credentials redacted from logs?)
+- Input validation implemented? (yes/no — DTO validation + sanitization?)
+
 ## Adding a New Connector
 1. Create the connector class in `src/connectors/` implementing the `Connector` interface
 2. Use `ConfigService` for configuration (inject via constructor)
@@ -170,6 +185,7 @@ Body:
 - Safe logging implemented? (yes/no — credentials redacted from logs?)
 - Input validation implemented? (yes/no — DTO validation + sanitization?)
 
+```
 ## Testing
 - Unit tests added? (yes/no)
 - Error handling tests included? (yes/no)

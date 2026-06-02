@@ -123,6 +123,7 @@ export class LokiConnector {
       const entries = result.data?.result;
 
       if (!entries || entries.length === 0) {
+
         return `No error logs found in the last ${hours} hour(s).`;
       }
 
