@@ -26,8 +26,7 @@ This document outlines the security considerations and best practices for deploy
 - This is a defense-in-depth measure: if an agent's working directory is inside the repo and it runs `git clone` targeting the same repo, the clone is ignored by Git and will not be tracked or committed.
 - Stray nested clones can be safely deleted with `rm -rf argus-ai/`.
 
-### `config.example.yaml` Placeholders\n- **Docker Compose Dev Stack**: The `docker-compose.dev.yml` file uses anonymous admin access for Grafana (GF_AUTH_ANONYMOUS_ENABLED=true, GF_AUTH_ANONYMOUS_ORG_ROLE=Admin) for development convenience. This is acceptable only on a trusted local machine and should never be deployed to production. Ensure that any production deployments of Grafana have proper authentication and authorization configured.
-- **Docker Compose Dev Stack**: The `docker-compose.dev.yml` file uses anonymous admin access for Grafana (`GF_AUTH_ANONYMOUS_ENABLED=true`, `GF_AUTH_ANONYMOUS_ORG_ROLE=Admin`) for development convenience. This is acceptable only on a trusted local machine and should never be deployed to production. Ensure that any production deployments of Grafana have proper authentication and authorization configured.
+### `config.example.yaml` Placeholders
 - The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
 
 ### Docker Compose Dev Environment Security
@@ -37,6 +36,11 @@ This document outlines the security considerations and best practices for deploy
 - For production, use the production Helm chart with proper authentication, TLS, and network policies.
 
 ## 2. User Query Security (Prompt Injection Prevention)
+
+### Nested Clone Prevention
+- The `.gitignore` includes `argus-ai/` to prevent automation agents from accidentally cloning the repository inside itself.
+- This is a defense-in-depth measure: if an agent's working directory is inside the repo and it runs `git clone` targeting the same repo, the clone is ignored by Git and will not be tracked or committed.
+- Stray nested clones can be safely deleted with `rm -rf argus-ai/`.
 
 ### Robust Input Sanitization
 - **All natural language queries submitted by users are subject to rigorous sanitization and validation** before being processed by the Large Language Model (LLM) or used to construct API calls to external connectors.
@@ -137,7 +141,7 @@ Error messages are sanitized before logging — the original error message is pa
 
 ### Regular Updates
 - Keep all dependencies up to date to patch known vulnerabilities.
-- Regularly update the Gemini API client library and other dependencies.
+- Regularly update the DeepSeek API client library (primary) and Gemini API client library (optional fallback) and other dependencies.
 - Monitor security advisories for the NestJS framework and related packages.
 
 ## See Also

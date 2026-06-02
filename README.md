@@ -41,10 +41,9 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
-
-> **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
-
     ```
+
+    > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
 
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
@@ -104,7 +103,7 @@ Key environment variables:
 | `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | Yes | — |
 | `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No | — |
 | `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
-| `LLM_MAX_PROMPT_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
+| `LLM_MAX_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
 | `KUBECONFIG_PATH` | Path to kubeconfig file | No | In-cluster config |
 | `PROMETHEUS_URL` | Prometheus URL | No | `http://localhost:9090` |

@@ -1,5 +1,6 @@
 import { Injectable, HttpException, Logger } from '@nestjs/common';
 import { DeepSeekService } from './deepseek/deepseek.service';
+import { GeminiService } from './gemini/gemini.service';
 
 function estimateTokens(text: string): number { return Math.ceil(text.length / 4); }
 
@@ -26,7 +27,10 @@ export class LlmService {
   private readonly timeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? 30_000);
   private readonly maxTokens = Number(process.env.LLM_MAX_TOKENS ?? 50_000);
 
-  constructor(private readonly deepseek: DeepSeekService) {}
+  constructor(
+    private readonly deepseek: DeepSeekService,
+    private readonly gemini?: GeminiService,
+  ) {}
 
   async runToolUseLoop(
     message: string,
@@ -46,6 +50,29 @@ export class LlmService {
       return result;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+
+      // Try Gemini fallback if available
+      if (this.gemini && !msg.includes('timed out')) {
+        this.logger.warn(`DeepSeek failed, trying Gemini fallback: ${redact(msg)}`);
+        try {
+          const fallbackResult = await Promise.race([
+            this.gemini.runToolUseLoop(message, _tools as any),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('LLM request timed out')), this.timeoutMs),
+            ),
+          ]);
+          return fallbackResult;
+        } catch (fallbackErr: unknown) {
+          const fallbackMsg = fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr);
+          if (fallbackMsg.includes('timed out')) {
+            this.logger.warn(`Gemini fallback also timed out after ${this.timeoutMs}ms`);
+            throw new HttpException({ statusCode: 504, message: 'LLM request timed out', error: 'Gateway Timeout' }, 504);
+          }
+          this.logger.error(`Gemini fallback also failed: ${redact(fallbackMsg)}`);
+          throw new HttpException({ statusCode: 502, message: 'LLM service unavailable', error: 'Bad Gateway' }, 502);
+        }
+      }
+
       if (msg.includes('timed out')) {
         this.logger.warn(`LLM timed out after ${this.timeoutMs}ms`);
         throw new HttpException({ statusCode: 504, message: 'LLM request timed out', error: 'Gateway Timeout' }, 504);

@@ -8,17 +8,34 @@ A `config.example.yaml` is provided in the root of the repository, which you sho
 cp config.example.yaml config.yaml
 ```
 
-**Important Security Note:** Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${GEMINI_API_KEY}`). **Never commit `config.yaml` to Git if it contains sensitive information!**
+**Important Security Note:** Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${DEEPSEEK_API_KEY}`, `${GEMINI_API_KEY}`). **Never commit `config.yaml` to Git if it contains sensitive information!**
 
 ## Configuration Structure
 
 The `config.yaml` is structured into several top-level sections, each corresponding to a specific component or connector.
 
-### `gemini`
+### `deepseek`
 
-Configuration for the Google Gemini API.
+Configuration for the DeepSeek V3 API (primary LLM).
 
--   `api_key`: Your Gemini API key. **Required.** Populated via environment variable (e.g., `${GEMINI_API_KEY}`).
+-   `api_key`: Your DeepSeek API key. **Required.** Populated via environment variable (e.g., `${DEEPSEEK_API_KEY}`).
+-   `model`: The DeepSeek model to use (optional, defaults to `deepseek-chat`).
+-   `url`: The API endpoint URL (optional, defaults to `https://api.deepseek.com/chat/completions`).
+
+Example:
+
+```yaml
+deepseek:
+  api_key: "${DEEPSEEK_API_KEY}"
+  model: "deepseek-chat"
+  url: "https://api.deepseek.com/chat/completions"
+```
+
+### `gemini` (optional fallback)
+
+Configuration for the Google Gemini API (optional fallback LLM).
+
+-   `api_key`: Your Gemini API key. Populated via environment variable (e.g., `${GEMINI_API_KEY}`).
 -   `model`: The Gemini model to use (e.g., `gemini-1.5-flash`).
 
 Example:
@@ -28,6 +45,7 @@ gemini:
   api_key: "${GEMINI_API_KEY}"
   model: "gemini-1.5-flash"
 ```
+
 
 ### `kubernetes`
 
@@ -111,12 +129,12 @@ argus_monitor:
 
 ## LLM Configuration
 
-The LLM service (`LlmService`) is configurable via environment variables or the `LLM_SERVICE_OPTIONS` injection token:
+The LLM service (`LlmService`) is configurable via environment variables:
 
 | Variable | Description | Default |
 |---|---|---|
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | `30000` (30s) |
-| `LLM_MAX_PROMPT_TOKENS` | Maximum estimated tokens before oldest history is truncated | `50000` |
+| `LLM_MAX_TOKENS` | Maximum estimated tokens before oldest history is truncated | `50000` |
 | `LLM_MAX_RETRIES` | Number of retry attempts on 5xx server errors | `1` |
 
 ### LLM Error Handling
@@ -153,11 +171,13 @@ Argus AI is designed to handle various operational challenges gracefully:
 - **LLM Error Resilience**:
   - **30-second hard timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`. Timeout errors are NOT retried.
   - **Automatic retry** — on 5xx server errors, the call is retried once (configurable via `LLM_MAX_RETRIES`) before returning `502 Bad Gateway`.
-  - **Token limit guard** — prompts exceeding 50k estimated tokens truncate oldest history first.
+  - **Token limit guard** — prompts exceeding 50k estimated tokens (configurable via `LLM_MAX_TOKENS`) truncate oldest history first.
   - **Safe logging** — the LLM service never logs full prompt or response content; all log output is sanitized via `sanitizeForLog()`.
 - **Empty/Null/Large Responses**:
   - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
   - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
+- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
+- **Input Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
 
 ## See Also
 

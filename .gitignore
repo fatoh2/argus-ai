@@ -9,5 +9,3 @@ config.yaml
 
 # Prevent agents cloning repo inside itself
 argus-ai/
-# Build output
-dist/

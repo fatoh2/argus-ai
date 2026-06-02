@@ -1,12 +1,13 @@
 # argus-ai — AI Integration Agent Rules
 
 ## Role
-You build and maintain Argus AI: an AI infrastructure assistant powered by Google Gemini
-1.5 Flash API tool use, with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD,
+You build and maintain Argus AI: an AI infrastructure assistant powered by DeepSeek V3
+(primary) with optional Gemini 1.5 Flash fallback, using OpenAI-compatible API tool use,
+with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD,
 and optionally argus-monitor's database.
 
 ## Stack
-- **AI**: Google Gemini 1.5 Flash API (generative-ai SDK)
+- **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (optional fallback)
 - **Backend**: NestJS + TypeScript
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
@@ -52,13 +53,14 @@ src/
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
-  llm/                    # Gemini 1.5 Flash LLM integration
-    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
+  llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
+    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
     llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
     llm.controller.spec.ts# Tests for LlmController
-    gemini/               # Google Gemini 1.5 Flash API client
+    deepseek/             # DeepSeek V3 API client (primary LLM)
+    gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -111,47 +113,3 @@ The factory function receives an `AbortSignal` as its first argument:
 
 ```typescript
 fn: (signal: AbortSignal) => Promise<T>
-```
-
-- **HTTP connectors** (ArgoCD, Loki): pass `signal` to `http.get({ signal })` for proper request cancellation
-- **Delegating connectors** (Kubernetes, K8sPrometheus): accept as `_signal` for API consistency
-- **Custom connectors**: if making HTTP requests, pass the signal to enable cancellation
-
-### The `sanitizeLog()` Utility
-
-```typescript
-function sanitizeLog(message: string): string {
-  return message.replace(
-    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
-    '$1***redacted***$1',
-  );
-}
-```
-
-### Example: Adding a connector to ConnectorsModule
-
-```typescript
-// src/connectors/connectors.module.ts
-import { Module } from '@nestjs/common';
-import { K8sPrometheusConnector } from './k8s-prometheus.connector';
-import { KubernetesConnector } from './kubernetes.connector';
-import { LokiConnector } from './loki.connector';
-import { ArgoCDConnector } from './argocd.connector';
-
-@Module({
-  providers: [K8sPrometheusConnector, KubernetesConnector, LokiConnector, ArgoCDConnector],
-  exports: [K8sPrometheusConnector, KubernetesConnector, LokiConnector, ArgoCDConnector],
-})
-export class ConnectorsModule {}
-```
-
-## The Tools Claude Can Call (read-only always)
-```typescript
-get_pod_status(namespace: string, label_selector?: string)
-get_prometheus_metric(query: string, start: string, end: string)
-get_loki_logs(service: string, start: string, end: string, level?: string)
-get_argocd_app_status(app_name: string)
-get_recent_github_runs(repo: string, branch?: string)
-get_recent_alerts(user_id: string, hours: number)      // argus-monitor connector
-get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connector
-```

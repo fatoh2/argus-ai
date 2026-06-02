@@ -13,6 +13,8 @@ This guide provides instructions for setting up your development environment, ru
 
     ```
 
+    > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones by automation agents. If you see this directory, it is a stray artifact and can be safely deleted.
+
 2.  **Install dependencies**:
     ```bash
     npm install
@@ -26,7 +28,12 @@ This guide provides instructions for setting up your development environment, ru
     ```
     **Never commit `config.yaml` to Git!**
 
-    You can also use a `.env` file for environment variables. The app uses `@nestjs/config` which loads `.env` automatically.
+    You can also use a `.env` file for environment variables. The app uses `@nestjs/config` which loads `.env` automatically. Copy `.env.example` to `.env` and fill in your DeepSeek API key:
+
+    ```bash
+    cp .env.example .env
+    # Edit .env — set DEEPSEEK_API_KEY=your-key-here
+    ```
 
 4.  **Run Locally with Docker Compose (recommended)**:
 
@@ -63,7 +70,7 @@ This guide provides instructions for setting up your development environment, ru
     - `PROMETHEUS_URL=http://prometheus:9090`
     - `LOKI_URL=http://loki:3100`
 
-    > **Note**: Grafana uses anonymous admin access for dev convenience. This is disabled in production.
+    > **Security Note**: Grafana uses anonymous admin access (`GF_AUTH_ANONYMOUS_ENABLED=true`, `GF_AUTH_ANONYMOUS_ORG_ROLE=Admin`) for dev convenience. This is acceptable only on a trusted local machine. Never deploy the dev docker-compose file to production. See [Security Best Practices](security.md) for details.
 
     **Stop the stack**:
     ```bash
@@ -94,6 +101,7 @@ docker/
       datasources.yaml     # Auto-provisioned Prometheus + Loki datasources
     dashboards/
       dashboards.yaml      # Dashboard provisioning config
+
 src/
   app.module.ts           # Root module — registers ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint
@@ -116,12 +124,15 @@ src/
     argocd.connector.ts   # ArgoCD application status
   llm/                    # LLM integration (Gemini API)
     llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService and LlmController
+
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, 50k token guard, health check, error mapping
     llm.service.spec.ts   # Tests for LlmService
     llm.controller.ts     # POST /llm/run-tool-use-loop + GET /health/llm — LLM health check endpoint
     llm.controller.spec.ts# Tests for LlmController
-    gemini/               # Google Gemini API client
+    deepseek/             # DeepSeek V3 API client (primary LLM)
+    gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
+.env.example              # Template — copy to .env, never commit .env with secrets
 ```
 
 ## Configuration Architecture
@@ -146,19 +157,19 @@ export class LokiConnector {
 
 ## LLM Service Architecture
 
-The `LlmService` is the core LLM integration layer. It wraps the Gemini API with:
+The `LlmService` is the core LLM integration layer. It wraps the DeepSeek V3 API (primary) with:
 
 ### Timeout Protection
 
-Uses `Promise.race` between the Gemini call and a timeout promise. If the call exceeds `timeoutMs` (default 30s), it rejects with `504 Gateway Timeout`. Timeout errors are NOT retried — they fail fast.
+Uses `Promise.race` between the DeepSeek call and a timeout promise. If the call exceeds `LLM_TIMEOUT_MS` (default 30s), it rejects with `504 Gateway Timeout`. Timeout errors are NOT retried — they fail fast.
 
 ### Token Limit Guard
 
-The `truncateConversation()` function estimates token count using `Math.ceil(text.length / 4)` and removes oldest messages first when the total exceeds `maxPromptTokens` (default 50k).
+The `truncateHistory()` function estimates token count using `Math.ceil(text.length / 4)` and removes oldest messages first when the total exceeds `LLM_MAX_TOKENS` (default 50k).
 
 ### Retry Logic
 
-On 5xx server errors, the call is retried up to `maxRetries` times (default 1). Non-retryable errors (4xx, auth failures, rate limits) fail immediately.
+On 5xx server errors, the call is retried up to `LLM_MAX_RETRIES` times (default 1). Non-retryable errors (4xx, auth failures, rate limits) fail immediately.
 
 ### Error Classification
 
@@ -264,7 +275,7 @@ npm run test:watch
 
 - Use Jest with `@nestjs/testing` and mocked `ConfigService`
 - Test files should be co-located with their source files as `*.spec.ts`
-- Mock external dependencies (Gemini API, Kubernetes client, etc.)
+- Mock external dependencies (DeepSeek API, Gemini API, Kubernetes client, etc.)
 - Test both success and failure paths (timeouts, errors, empty responses)
 
 ## Adding a New Connector
