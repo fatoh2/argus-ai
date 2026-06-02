@@ -33,7 +33,7 @@ Argus AI currently supports read-only integration with:
 
 This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s cluster and start querying within 10 minutes.
 
-1.  **Prerequisites**: Ensure you have Node.js (v18+) and npm installed.
+1.  **Prerequisites**: Ensure you have Node.js (v20+) and npm installed.
 
 2.  **Clone the repository**:
     ```bash
