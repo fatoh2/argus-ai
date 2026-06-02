@@ -2,10 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as https from 'https';
 import * as http from 'http';
-import {
-  withConnectorErrorHandling,
-  ConnectorErrorResult,
-} from './utils/connector-error';
 
 export interface LokiQueryOptions {
   query: string;
@@ -55,27 +51,27 @@ export class LokiConnector {
    * Execute a LogQL range query over a time range.
    * Returns log entries with their labels and timestamps.
    */
-  async queryRange(options: LokiQueryOptions): Promise<LokiQueryResult | ConnectorErrorResult<LokiQueryResult>> {
-    return withConnectorErrorHandling('loki', async (signal) => {
-      const { query, start, end, limit } = options;
-      const effectiveLimit = Math.min(limit ?? this.defaultLimit, 500);
+  async queryRange(options: LokiQueryOptions): Promise<LokiQueryResult> {
+    const { query, start, end, limit } = options;
+    const effectiveLimit = Math.min(limit ?? this.defaultLimit, 500);
 
-      // Parse time range — default to last 1 hour
-      const now = new Date();
-      const startTime = start ? this.parseTime(start) : new Date(now.getTime() - 3600000);
-      const endTime = end ? this.parseTime(end) : now;
+    // Parse time range — default to last 1 hour
+    const now = new Date();
+    const startTime = start ? this.parseTime(start) : new Date(now.getTime() - 3600000);
+    const endTime = end ? this.parseTime(end) : now;
 
-      const params = new URLSearchParams({
-        query,
-        start: String(startTime.getTime() * 1000000), // Loki uses nanoseconds
-        end: String(endTime.getTime() * 1000000),
-        limit: String(effectiveLimit),
-        direction: 'backward',
-      });
+    const params = new URLSearchParams({
+      query,
+      start: String(startTime.getTime() * 1000000), // Loki uses nanoseconds
+      end: String(endTime.getTime() * 1000000),
+      limit: String(effectiveLimit),
+      direction: 'backward',
+    });
 
-      this.logger.debug(`Loki range query: ${query} from ${startTime.toISOString()} to ${endTime.toISOString()}`);
+    this.logger.debug(`Loki range query: ${query} from ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
-      const response = await this.request(`/loki/api/v1/query_range?${params.toString()}`, signal);
+    try {
+      const response = await this.request(`/loki/api/v1/query_range?${params.toString()}`);
       const body = JSON.parse(response.body);
 
       if (response.statusCode !== 200) {
@@ -83,7 +79,10 @@ export class LokiConnector {
       }
 
       return this.transformResult(body);
-    });
+    } catch (error) {
+      this.logger.error(`Loki query failed: ${error.message}`);
+      throw error;
+    }
   }
 
   /**
@@ -95,16 +94,14 @@ export class LokiConnector {
     end?: string,
     level?: string,
     limit?: number,
-  ): Promise<LokiQueryResult | ConnectorErrorResult<LokiQueryResult>> {
-    return withConnectorErrorHandling('loki', async (signal) => {
-      let query = `{${labelSelector}}`;
+  ): Promise<LokiQueryResult> {
+    let query = `{${labelSelector}}`;
 
-      if (level) {
-        query += ` |= \`${level}\``;
-      }
+    if (level) {
+      query += ` |= \`${level}\``;
+    }
 
-      return this.queryRange({ query, start, end, limit });
-    });
+    return this.queryRange({ query, start, end, limit });
   }
 
   /**
@@ -112,18 +109,17 @@ export class LokiConnector {
    * This is the key method for "summarize errors from the last hour".
    */
   async summarizeErrors(hours: number = 1, labelSelector: string = '{}'): Promise<string> {
+    const end = new Date().toISOString();
+    const start = new Date(Date.now() - hours * 3600000).toISOString();
+
+    // Query for error-level logs
+    const query = `{${labelSelector}} |= \`error\``;
+
     try {
-      const end = new Date().toISOString();
-      const start = new Date(Date.now() - hours * 3600000).toISOString();
-
-      // Query for error-level logs
-      const query = `{${labelSelector}} |= \`error\``;
-
       const result = await this.queryRange({ query, start, end, limit: 500 });
-      const entries = result.data?.result;
+      const entries = result.data.result;
 
-      if (!entries || entries.length === 0) {
-
+      if (entries.length === 0) {
         return `No error logs found in the last ${hours} hour(s).`;
       }
 
@@ -184,12 +180,12 @@ export class LokiConnector {
     return new Date(Date.now() - 3600000);
   }
 
-  private request(path: string, signal?: AbortSignal): Promise<{ statusCode: number; body: string }> {
+  private request(path: string): Promise<{ statusCode: number; body: string }> {
     return new Promise((resolve, reject) => {
       const url = new URL(path, this.baseUrl);
       const lib = url.protocol === 'https:' ? https : http;
 
-      const req = lib.get(url.toString(), { timeout: 10000, signal }, (res) => {
+      const req = lib.get(url.toString(), { timeout: 10000 }, (res) => {
         let data = '';
         res.on('data', (chunk) => (data += chunk));
         res.on('end', () => {
@@ -197,14 +193,7 @@ export class LokiConnector {
         });
       });
 
-      req.on('error', (err) => {
-        // AbortError is expected on timeout — reject so withConnectorErrorHandling catches it
-        if (err.name === 'AbortError') {
-          reject(new Error('Request timed out'));
-        } else {
-          reject(err);
-        }
-      });
+      req.on('error', (err) => reject(err));
       req.on('timeout', () => {
         req.destroy();
         reject(new Error('Request timed out'));
