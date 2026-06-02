@@ -53,50 +53,152 @@ ArgoCD Sync Status: Synced and Healthy.
 Overall: The `payment-gateway` deployment appears healthy.
 ```
 
-## Error Log Analysis (Loki)
+## Postmortem Analysis
 
-**Query**: "Find all error logs for the `auth-service` in the last 30 minutes."
+**Query**: "Provide a postmortem analysis for the database outage that occurred last Tuesday between 10:00 and 11:00 UTC."
 
-**Expected AI Response**: Argus AI would use the Loki connector's `queryLogs()` method with the label selector for `auth-service`, filtering for error-level logs over the last 30 minutes.
+**Expected AI Response**: Argus AI would correlate data from multiple sources for the specified time frame. It would look at Kubernetes events for database pods, Prometheus metrics for database performance (e.g., connection errors, latency, disk I/O), and Loki logs for any errors or warnings from the database instances. It would then synthesize this into a postmortem summary.
 
 Example Output:
 ```
-Error Logs for auth-service (last 30 minutes):
+Postmortem Analysis: Database Outage (Last Tuesday, 10:00-11:00 UTC):
+
+Timeline:
+- 10:00 UTC: Initial alert triggered by Prometheus for high database connection errors.
+- 10:05 UTC: Kubernetes events show database primary pod restarting due to 'NodeNotReady' condition.
+- 10:10 UTC: Loki logs indicate a sudden increase in disk I/O errors on the node hosting the database.
+- 10:30 UTC: Database replica promoted to primary, but connection issues persisted due to underlying storage problems.
+- 10:55 UTC: Node hosting database was drained and restarted by infrastructure team.
+- 11:00 UTC: Database service restored, all metrics returned to normal.
+
+Root Cause: Underlying storage issue on the Kubernetes node hosting the primary database pod, leading to disk I/O errors and subsequent node unreadiness.
+Impact: 60 minutes of database unavailability, affecting all services dependent on the database.
+Resolution: Node restart and automatic database failover/recovery.
+Lessons Learned: Improve monitoring for underlying node storage health. Explore multi-zone database deployments for higher availability.
+```
+
+## Log Analysis with Loki
+
+**Query**: "Show me all error logs from the 'api-gateway' service in the last hour."
+
+**Expected AI Response**: Argus AI would use the Loki connector's `queryLogs` method with the label selector `app="api-gateway"` and level filter for errors. It would return the matching log entries with timestamps.
+
+Example Output:
+```
+Error Logs for api-gateway (Last 1 hour):
 
 Found 12 error log entries.
 
-Top error messages:
-  - "ERROR: connection refused to database" (5x)
-  - "ERROR: authentication token expired" (4x)
-  - "ERROR: rate limit exceeded for user 12345" (3x)
+Recent errors:
+- 14:32:01 - ERROR: upstream connect error or disconnect/reset before headers
+- 14:32:02 - ERROR: connection refused to auth-service:8080
+- 14:35:10 - ERROR: rate limit exceeded for client IP 10.0.1.50
+- 14:40:00 - ERROR: upstream connect error or disconnect/reset before headers
+- 14:40:01 - ERROR: connection refused to auth-service:8080
 
-Timeline:
-  - 14:30:00 UTC - First errors appear (connection refused)
-  - 14:32:00 UTC - Peak error rate (8 errors in 2 minutes)
-  - 14:45:00 UTC - Errors subside after database recovery
+Pattern detected: The errors correlate with a brief auth-service outage between 14:32 and 14:40 UTC.
 ```
 
-## Error Summarization (Loki)
+**Query**: "Summarize errors from all services in the last 2 hours."
 
-**Query**: "Summarize errors from the last hour across all services."
-
-**Expected AI Response**: Argus AI would use the Loki connector's `summarizeErrors()` method, which queries for error-level logs across all labels and groups them by source and message.
+**Expected AI Response**: Argus AI would use the Loki connector's `summarizeErrors` method to aggregate error logs across all services, grouped by source and message.
 
 Example Output:
 ```
-Found 47 error log entries in the last 1 hour(s).
+Error Summary (Last 2 hours):
+
+Found 47 error log entries across all services.
 
 Top sources:
-  - api-gateway/production: 23 errors
+  - api-gateway/production: 18 errors
   - auth-service/production: 12 errors
-  - payment-worker/staging: 8 errors
-  - database/production: 4 errors
+  - database/production: 9 errors
+  - worker/production: 5 errors
+  - frontend/production: 3 errors
 
 Top error messages:
   - "ERROR: upstream connect error or disconnect/reset before headers" (15x)
-  - "ERROR: connection refused to database" (8x)
-  - "ERROR: request timed out after 30s" (7x)
-  - "ERROR: authentication token expired" (5x)
+  - "ERROR: connection refused to auth-service:8080" (10x)
+  - "ERROR: query execution timeout exceeded" (7x)
+  - "ERROR: disk I/O error on /data volume" (5x)
+  - "ERROR: rate limit exceeded for client" (3x)
+```
+
+## ArgoCD Application Status
+
+**Query**: "What is the status of the 'my-app-frontend' ArgoCD application?"
+
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getAppStatus` method to fetch the sync and health status of the specified application.
+
+Example Output:
+```
+ArgoCD Application Status: my-app-frontend
+
+Application: my-app-frontend
+  Namespace: default
+  Sync Status: Synced
+  Health Status: Healthy
+  Revision: abc123def456
+
+The application is currently synced and healthy.
+```
+
+**Query**: "Give me a summary of all ArgoCD applications."
+
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getClusterSummary` method to get a comprehensive overview of all applications managed by ArgoCD.
+
+Example Output:
+```
+ArgoCD Cluster Summary:
+  Total applications: 8
+  Synced: 7/8
+  Healthy: 6/8
+
+Out of sync applications:
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
+
+Unhealthy applications:
+  - payment-worker (sync: Synced, health: Degraded)
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
+```
+
+## GitHub Actions Workflow Failure
+
+**Query**: "What caused the last failed GitHub Actions workflow run for the `ci.yml` workflow on the `main` branch of `fatoh2/argus-monitor`?"
+
+**Expected AI Response**: Argus AI would use the GitHub Actions connector to find the latest failed run of the specified workflow and branch. It would then retrieve details about the failed job and steps, including any error messages or logs available through the GitHub API.
+
+Example Output:
+```
+Last Failed GitHub Actions Workflow Run (fatoh2/argus-monitor, main branch, ci.yml):
+
+Run ID: 1234567890
+Status: Failed
+Timestamp: 2023-10-27 10:15:30 UTC
+
+Failed Job: 'build-and-test'
+Failed Step: 'Run unit tests'
+Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details."
+
+Recommendation: Review the unit test logs for the 'build-and-test' job to identify the specific test failures.
+```
+
+## Multi-Connector Query
+
+**Query**: "Is there any correlation between the recent Loki error logs and the Prometheus CPU spike in the 'production' namespace?"
+
+**Expected AI Response**: Argus AI would query Loki for recent error logs in the 'production' namespace and Prometheus for CPU metrics over the same time period. It would then correlate the data to identify any relationships.
+
+Example Output:
+```
+Correlation Analysis: Loki Errors vs Prometheus CPU (production namespace, Last 1 hour):
+
+Loki found 23 error log entries, primarily from the 'api-gateway' service.
+Prometheus shows a CPU spike from 45% to 92% on 'api-gateway' pods between 14:30 and 14:35 UTC.
+
+The error logs show 'upstream connect timeout' errors starting at 14:31 UTC, which aligns with the CPU spike. This suggests the CPU spike was caused by a backlog of requests timing out.
+
+Recommendation: Investigate the upstream service that the api-gateway connects to. Consider increasing the upstream timeout or adding circuit breaker logic.
 ```
 
 ## ArgoCD Application Status
@@ -137,63 +239,26 @@ Unhealthy applications:
   - database-backup (sync: Synced, health: Degraded)
 ```
 
-## Postmortem Analysis
-
-**Query**: "Provide a postmortem analysis for the database outage that occurred last Tuesday between 10:00 and 11:00 UTC."
-
-**Expected AI Response**: Argus AI would correlate data from multiple sources for the specified time frame. It would look at Kubernetes events for database pods, Prometheus metrics for database performance (e.g., connection errors, latency, disk I/O), and Loki logs for any errors or warnings from the database instances. It would then synthesize this into a postmortem summary.
-
-Example Output:
-```
-Postmortem Analysis: Database Outage (Last Tuesday, 10:00-11:00 UTC):
-
-Timeline:
-- 10:00 UTC: Initial alert triggered by Prometheus for high database connection errors.
-- 10:05 UTC: Kubernetes events show database primary pod restarting due to 'NodeNotReady' condition.
-- 10:10 UTC: Loki logs indicate a sudden increase in disk I/O errors on the node hosting the database.
-- 10:30 UTC: Database replica promoted to primary, but connection issues persisted due to underlying storage problems.
-- 10:55 UTC: Node hosting database was drained and restarted by infrastructure team.
-- 11:00 UTC: Database service restored, all metrics returned to normal.
-
-Root Cause: Underlying storage issue on the Kubernetes node hosting the primary database pod, leading to disk I/O errors and subsequent node unreadiness.
-Impact: 60 minutes of database unavailability, affecting all services dependent on the database.
-Resolution: Node restart and automatic database failover/recovery.
-Lessons Learned: Improve monitoring for underlying node storage health. Explore multi-zone database deployments for higher availability.
-```
-
-## GitHub Actions Workflow Failure
-
-**Query**: "What caused the last failed GitHub Actions workflow run for the `ci.yml` workflow on the `main` branch of `fatoh2/argus-monitor`?"
-
-**Expected AI Response**: Argus AI would use the GitHub Actions connector to find the latest failed run of the specified workflow and branch. It would then retrieve details about the failed job and steps, including any error messages or logs available through the GitHub API.
-
-Example Output:
-```
-Last Failed GitHub Actions Workflow Run (fatoh2/argus-monitor, main branch, ci.yml):
-
-Run ID: 1234567890
-Status: Failed
-Timestamp: 2023-10-27 10:15:30 UTC
-
-Failed Job: 'build-and-test'
-Failed Step: 'Run unit tests'
-Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details."
-
-Recommendation: Review the unit test logs for the failing tests and fix the underlying issues.
-```
-
 ## Rate Limit Exceeded
 
 **Query**: (Any query sent more than 20 times in a minute)
 
-**Expected AI Response**: If you exceed the rate limit, the API returns a  response instead of the usual JSON. The response includes a  header (the authoritative source for retry timing) indicating the number of seconds to wait before retrying.
+**Expected AI Response**: If you exceed the rate limit, the API returns a `429 Too Many Requests` response instead of the usual JSON. The response includes a `Retry-After` header (the authoritative source for retry timing) indicating the number of seconds to wait before retrying.
 
 Example Response (HTTP 429):
+```json
+{
+  "statusCode": 429,
+  "message": "Too Many Requests",
+  "retryAfterSeconds": 45
+}
+```
 
-
-> **Note**: The  HTTP header is the authoritative source for retry timing. The  field in the JSON body is provided for convenience and will always match the header value.
+> **Note**: The `Retry-After` HTTP header is the authoritative source for retry timing. The `retryAfterSeconds` field in the JSON body is provided for convenience and will always match the header value.
 
 The server also logs the event with a hashed IP address for monitoring:
+```
+Rate limit hit — IP hash: a1b2c3d4e5f6..., timeToExpire: 45000ms
+```
 
-
-**What to do**: Wait the number of seconds specified in the  header before sending another request. The limit resets on a rolling 60-second window per IP address.
+**What to do**: Wait the number of seconds specified in the `Retry-After` header before sending another request. The limit resets on a rolling 60-second window per IP address.

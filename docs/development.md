@@ -31,6 +31,8 @@ This guide provides instructions for setting up your development environment, ru
     npm run start:dev
     ```
     The backend will typically run on `http://localhost:3000`.
+    > **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. During development, you can test this by sending 21 requests within 60 seconds — the 21st should return `429 Too Many Requests` with a `Retry-After` header. Rate limit hits are logged with a hashed IP and timestamp.
+
 
 ## Project Structure
 
@@ -71,7 +73,7 @@ export class LokiConnector {
 
 ## Adding New Connectors
 
-Follow the detailed steps outlined in [CLAUDE.md](https://github.com/fatoh2/argus-ai/blob/main/CLAUDE.md#adding-a-new-connector). Key steps include:
+Follow the detailed steps outlined in [CLAUDE.md](../CLAUDE.md). Key steps include:
 
 1.  Create the connector class in `src/connectors/` implementing the `Connector` interface.
 2.  Add a health check method `isHealthy(): Promise<boolean>`.
@@ -94,22 +96,7 @@ To run all tests:
 npm test
 ```
 
-To run tests in watch mode during development:
+To run tests in watch mode:
 ```bash
-npm test -- --watch
+npm run test:watch
 ```
-
-## Code Style and Quality
-
--   Follow TypeScript best practices.
--   Adhere to the rules specified in [CLAUDE.md](https://github.com/fatoh2/argus-ai/blob/main/CLAUDE.md).
--   Ensure all new code is covered by tests.
-
-## Opening Pull Requests
-
-Before opening a PR, ensure:
-
--   All tests pass.
--   Your code adheres to the project's quality standards and CLAUDE.md rules.
--   The PR description follows the specified format (see [CLAUDE.md](https://github.com/fatoh2/argus-ai/blob/main/CLAUDE.md#pr-format)).
--   Relevant documentation (e.g., `docs/connectors.md`, `README.md`) is updated.
