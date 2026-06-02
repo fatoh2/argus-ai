@@ -24,6 +24,8 @@ The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If yo
 ## Repo Structure
 ```
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
+scripts/
+  setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
 Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
 docker/
   prometheus/

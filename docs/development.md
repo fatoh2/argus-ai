@@ -12,12 +12,20 @@ This guide provides instructions for setting up your development environment, ru
 
     > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones by automation agents. If you see this directory, it is a stray artifact and can be safely deleted.
 
-2.  **Install dependencies**:
+2.  **One-command setup (optional but recommended)**:
+    ```bash
+    bash scripts/setup.sh
+    ```
+    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs npm dependencies, and pulls Docker images for the dev stack. After it completes, skip ahead to step 5.
+
+    > **Note**: If you prefer to configure things manually, follow steps 3–5 instead.
+
+3.  **Install dependencies** (manual alternative):
     ```bash
     npm install
     ```
 
-3.  **Makefile shortcuts (recommended)**:
+4.  **Makefile shortcuts (recommended)**:
 
     A `Makefile` provides one-command shortcuts for common development tasks. After installing dependencies, you can use:
 
@@ -36,7 +44,7 @@ This guide provides instructions for setting up your development environment, ru
 
     > **Prerequisite**: `make` is typically pre-installed on Linux and macOS. Verify with `make --version`. If missing, install via `sudo apt-get install -y build-essential` (Linux) or Xcode Command Line Tools (macOS).
 
-4.  **Configure Environment**: 
+5.  **Configure Environment**: 
     Copy `config.example.yaml` to `config.yaml` and fill in placeholder values. For local development, you can use local instances of Prometheus, Loki, etc., or mock their responses.
     ```bash
     cp config.example.yaml config.yaml
@@ -51,7 +59,7 @@ This guide provides instructions for setting up your development environment, ru
     # Edit .env — set DEEPSEEK_API_KEY=your-key-here
     ```
 
-5.  **Run Locally with Docker Compose**:
+6.  **Run Locally with Docker Compose**:
 
     The `docker-compose.dev.yml` file provides a complete local observability stack so you can test connectors without a real Kubernetes cluster.
 
@@ -94,7 +102,7 @@ This guide provides instructions for setting up your development environment, ru
     # Or use: make down
     ```
 
-6.  **Run Locally without Docker (Node.js only)**:
+7.  **Run Locally without Docker (Node.js only)**:
 
     To start just the NestJS backend without the observability stack:
     ```bash
@@ -107,6 +115,8 @@ This guide provides instructions for setting up your development environment, ru
 ## Project Structure
 
 ```
+scripts/
+  setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
 Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
 docker/
