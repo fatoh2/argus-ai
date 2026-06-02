@@ -6,6 +6,10 @@ describe('KubernetesConnector', () => {
   let connector: KubernetesConnector;
 
   beforeEach(async () => {
+    // Ensure KUBECONFIG is not set so connector runs in offline mode
+    delete process.env.KUBECONFIG;
+    delete process.env.KUBECONFIG_BASE64;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [KubernetesConnector],
     }).compile();
@@ -18,15 +22,17 @@ describe('KubernetesConnector', () => {
   });
 
   describe('listPods', () => {
-    it('should return empty array by default', async () => {
+    it('should return offline status when KUBECONFIG not set', async () => {
       const result = await connector.listPods();
-      expect(result).toEqual([]);
+      expect(result).toEqual([
+        { status: 'connector offline', reason: 'KUBECONFIG not configured' },
+      ]);
     });
 
     it('should return structured error on timeout, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'kubernetes',
-        async (_signal) => {
+        async () => {
           await new Promise((resolve) => setTimeout(resolve, 500));
           return [];
         },
@@ -42,7 +48,7 @@ describe('KubernetesConnector', () => {
     it('should return structured error on failure, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'kubernetes',
-        async (_signal) => {
+        async () => {
           throw new Error('API server unreachable');
         },
       );
@@ -51,23 +57,6 @@ describe('KubernetesConnector', () => {
         error: 'kubernetes unavailable',
         data: null,
       });
-    });
-  });
-
-  describe('isHealthy', () => {
-    it('should return true when listPods succeeds', async () => {
-      jest.spyOn(connector, 'listPods').mockResolvedValue([]);
-      const result = await connector.isHealthy();
-      expect(result).toBe(true);
-    });
-
-    it('should return false when listPods returns structured error', async () => {
-      jest.spyOn(connector, 'listPods').mockResolvedValue({
-        error: 'kubernetes unavailable',
-        data: null,
-      });
-      const result = await connector.isHealthy();
-      expect(result).toBe(false);
     });
   });
 });

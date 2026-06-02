@@ -1,4 +1,4 @@
-.PHONY: up down check test chat health logs help
+.PHONY: up down check test test-local chat health logs help
 
 # ──────────────────────────────────────────────
 # argus-ai — Developer Makefile
@@ -20,6 +20,17 @@ check: ## Type-check and lint
 
 test: ## Run tests
 	npm test
+
+test-local: ## Boot stack, run tsc + tests, hit /health endpoint
+	docker compose up -d
+	@echo "Waiting for health..."
+	@for i in $$(seq 1 30); do \
+	  curl -sf http://localhost:3000/health && break || sleep 2; \
+	done
+	npx tsc --noEmit
+	npm test
+	curl -sf http://localhost:3000/health | grep -q ok
+	@echo "✅ argus-ai local test passed"
 
 chat: ## Send a message to the chat API — usage: make chat MSG="hello"
 	@if [ -z "$(MSG)" ]; then \
