@@ -4,15 +4,35 @@ Argus AI integrates with various infrastructure components to provide comprehens
 
 ## Graceful Degradation
 
-All connectors use a shared `withConnectorErrorHandling()` utility that provides:
+All connectors use a shared `withConnectorErrorHandling()` utility that provides graceful degradation. This includes:
 
-- **10-second timeout** — if a connector call takes longer than 10 seconds, it returns a structured error instead of hanging
+- **10-second timeout with AbortController** — if a connector call takes longer than 10 seconds, the underlying HTTP request is cancelled via `AbortController` and a structured error is returned instead of hanging
 - **Structured error responses** — on failure, connectors return `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
 - **Safe logging** — error logs include the connector name, error type, and duration, but never API keys, tokens, or secrets (automatically redacted via regex)
 - **Custom timeout** — the third parameter accepts a custom timeout in milliseconds (default 10,000)
 - **Health checks** — every connector implements `isHealthy(): Promise<boolean>` that returns `false` when the connector is unreachable
 
-This means the LLM always receives a predictable response shape and can gracefully handle unavailable services by informing the user rather than crashing.
+This means the LLM always receives a predictable response shape and can gracefully handle unavailable services or specific operational failures (e.g., an application not found in ArgoCD) by informing the user rather than crashing.
+
+### How It Works
+
+The `withConnectorErrorHandling()` utility accepts a factory function that receives an `AbortSignal`:
+
+```typescript
+async function withConnectorErrorHandling<T>(
+  connectorName: string,
+  fn: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number = 10_000,
+): Promise<T | ConnectorErrorResult<T>>
+```
+
+Internally, it creates an `AbortController` and passes the `signal` to the factory function. The timeout is enforced via `Promise.race` between the factory promise and a timeout promise. When the timeout fires:
+
+1. `AbortController.abort()` is called, which cancels the underlying HTTP request (via `http.get({ signal })`)
+2. The timeout promise rejects with a `TimeoutError`
+3. `withConnectorErrorHandling` catches the error and returns `{ error: "<name> unavailable", data: null }`
+
+Connectors that make HTTP requests (ArgoCD, Loki) pass the `AbortSignal` to `http.get({ signal })` for proper request cancellation. Connectors that delegate to other connectors (Kubernetes, K8sPrometheus) accept the signal but pass it through to their underlying calls.
 
 ### ConnectorErrorResult Type
 
@@ -49,6 +69,8 @@ This ensures that if an error message contains an API key or bearer token, it is
 - Pod status and details
 - Deployment and StatefulSet status
 - Cluster events
+
+All public methods are wrapped with `withConnectorErrorHandling('kubernetes', ...)` and accept the `AbortSignal` parameter for consistency, though the underlying `@kubernetes/client-node` library handles its own cancellation.
 
 **Available methods**:
 - `isHealthy()` — health check against the Kubernetes API
@@ -92,7 +114,7 @@ prometheus:
 
 **Purpose**: Convenience facade that delegates to both the Kubernetes and Prometheus connectors, wrapping all calls with graceful degradation.
 
-**How it works**: All methods (`listPods`, `getPodLogs`, `describeDeployment`, `queryPrometheus`, `instantQueryPrometheus`, `rangeQueryPrometheus`) are wrapped with `withConnectorErrorHandling('k8s prometheus', ...)`. On failure, they return a `ConnectorErrorResult` instead of throwing.
+**How it works**: All methods (`listPods`, `getPodLogs`, `describeDeployment`, `queryPrometheus`, `instantQueryPrometheus`, `rangeQueryPrometheus`) are wrapped with `withConnectorErrorHandling('k8s prometheus', ...)`. On failure, they return a `ConnectorErrorResult` instead of throwing. The factory functions accept `_signal` for API consistency with other connectors.
 
 **Available methods**:
 - `isHealthy()` — returns `true` if `listPods` succeeds
@@ -107,7 +129,7 @@ prometheus:
 
 **Purpose**: Allows searching and analyzing logs stored in Loki.
 
-**How it works**: Queries Loki using LogQL to retrieve log streams based on labels and time ranges. By default, queries are capped at 500 lines to prevent excessive data retrieval. All methods are wrapped with `withConnectorErrorHandling('loki', ...)` for graceful degradation.
+**How it works**: Queries Loki using LogQL to retrieve log streams based on labels and time ranges. By default, queries are capped at 500 lines to prevent excessive data retrieval. All methods are wrapped with `withConnectorErrorHandling('loki', ...)` for graceful degradation. The `request()` method accepts an `AbortSignal` and passes it to `http.get({ signal })` so that timed-out requests are properly cancelled at the HTTP level.
 
 **Available methods**:
 - `isHealthy()` — health check — returns `true` if Loki `/ready` endpoint responds
@@ -130,11 +152,11 @@ loki:
 
 **Purpose**: Monitors the status of your ArgoCD applications.
 
-**How it works**: Connects to the ArgoCD API to fetch the status of specified applications, including sync status and health. Authentication is supported via bearer token. All methods are wrapped with `withConnectorErrorHandling('argocd', ...)` for graceful degradation.
+**How it works**: Connects to the ArgoCD API to fetch the status of specified applications, including sync status and health. Authentication is via a bearer token. All public methods are wrapped with `withConnectorErrorHandling('argocd', ...)` for graceful degradation. The `request()` method accepts an `AbortSignal` and passes it to `http.get({ signal })` so that timed-out requests are properly cancelled at the HTTP level.
 
 **Available methods**:
-- `isHealthy()` — health check — returns `true` if ArgoCD `/api/v1/session/userinfo` responds
-- `getAppStatus(appName)` — fetch sync status, health status, and revision for a specific application
+- `isHealthy()` — health check — returns `true` if the ArgoCD API responds
+- `getAppStatus(appName)` — get sync status and health for a specific application
 - `listApps()` — list all applications with their sync and health status
 - `getClusterSummary()` — get a formatted summary of all applications (healthy vs unhealthy)
 
