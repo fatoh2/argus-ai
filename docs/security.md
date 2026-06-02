@@ -28,7 +28,6 @@ This document outlines the security considerations and best practices for deploy
 
 ### `config.example.yaml` Placeholders
 - The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
-- The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
 
 ### Docker Compose Dev Environment Security
 - The `docker-compose.dev.yml` file enables **Grafana anonymous admin access** (`GF_AUTH_ANONYMOUS_ENABLED=true`, `GF_AUTH_ANONYMOUS_ORG_ROLE=Admin`) for local development convenience.
@@ -37,11 +36,6 @@ This document outlines the security considerations and best practices for deploy
 - For production, use the production Helm chart with proper authentication, TLS, and network policies.
 
 ## 2. User Query Security (Prompt Injection Prevention)
-
-### Nested Clone Prevention
-- The `.gitignore` includes `argus-ai/` to prevent automation agents from accidentally cloning the repository inside itself.
-- This is a defense-in-depth measure: if an agent's working directory is inside the repo and it runs `git clone` targeting the same repo, the clone is ignored by Git and will not be tracked or committed.
-- Stray nested clones can be safely deleted with `rm -rf argus-ai/`.
 
 ### Robust Input Sanitization
 - **All natural language queries submitted by users are subject to rigorous sanitization and validation** before being processed by the Large Language Model (LLM) or used to construct API calls to external connectors.
