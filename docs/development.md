@@ -43,7 +43,8 @@ src/
   main.ts                 # Bootstrap — global ValidationPipe with whitelist + forbidNonWhitelisted
   chat/                   # Chat API module (REST endpoint)
     chat.controller.ts    # POST /chat — input sanitization (strips control chars) + validation
-    chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
+    chat.service.ts       # Delegates to LlmService.runToolUseLoop() — real AI responses
+    chat.module.ts        # Imports LlmModule + ThrottlerModule (20 req/min) + ChatRateLimitGuard
     chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging + Retry-After header
     dto/
       chat.dto.ts         # ChatDto — message validation (IsString, MaxLength 4000)
@@ -89,6 +90,14 @@ export class LokiConnector {
 ## LLM Service Architecture
 
 The `LlmService` is the core LLM integration layer. It wraps the Gemini API with:
+
+### ChatService Integration
+
+The `ChatService` (in `chat/chat.module.ts`) imports `LlmModule` and injects `LlmService` to provide real AI responses via the `/chat` endpoint. The `getAnswer()` method delegates directly to `llmService.runToolUseLoop()`, passing the user's message, available tools, and conversation history. This means:
+
+- **Every `/chat` request** triggers a real Gemini API call with tool-use capabilities
+- **Conversation history** is passed through for contextual multi-turn conversations
+- **All LLM resilience features** (timeout, retry, token guard, error mapping) apply automatically
 
 ### Timeout Protection
 

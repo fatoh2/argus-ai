@@ -113,6 +113,8 @@ argus_monitor:
 
 The LLM service (`LlmService`) is configurable via environment variables or the `LLM_SERVICE_OPTIONS` injection token:
 
+> **Note**: The `/chat` endpoint is now wired to `LlmService` via `ChatService`. When you send a message to `/chat`, it calls `llmService.runToolUseLoop()` to generate a real AI response using Google Gemini. All LLM configuration options below (timeout, retries, token limits) apply to chat requests as well.
+
 | Variable | Description | Default |
 |---|---|---|
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | `30000` (30s) |
