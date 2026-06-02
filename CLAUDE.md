@@ -1,12 +1,13 @@
 # argus-ai — AI Integration Agent Rules
 
 ## Role
-You build and maintain Argus AI: an AI infrastructure assistant powered by Google Gemini
-1.5 Flash API tool use, with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD,
+You build and maintain Argus AI: an AI infrastructure assistant powered by DeepSeek V3
+(primary) with optional Gemini 1.5 Flash fallback, using OpenAI-compatible API tool use,
+with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD,
 and optionally argus-monitor's database.
 
 ## Stack
-- **AI**: Google Gemini 1.5 Flash API (generative-ai SDK)
+- **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (optional fallback)
 - **Backend**: NestJS + TypeScript
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
@@ -40,13 +41,14 @@ src/
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
-  llm/                    # Gemini 1.5 Flash LLM integration
-    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
+  llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
+    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
     llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
     llm.controller.spec.ts# Tests for LlmController
-    gemini/               # Google Gemini 1.5 Flash API client
+    deepseek/             # DeepSeek V3 API client (primary LLM)
+    gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 

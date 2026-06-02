@@ -136,7 +136,7 @@ Error messages are sanitized before logging — the original error message is pa
 
 ### Regular Updates
 - Keep all dependencies up to date to patch known vulnerabilities.
-- Regularly update the Gemini API client library and other dependencies.
+- Regularly update the DeepSeek API client library (primary) and Gemini API client library (optional fallback) and other dependencies.
 - Monitor security advisories for the NestJS framework and related packages.
 
 ## See Also
