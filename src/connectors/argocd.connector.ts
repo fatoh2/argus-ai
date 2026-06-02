@@ -2,6 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as https from 'https';
 import * as http from 'http';
+import {
+  withConnectorErrorHandling,
+  ConnectorErrorResult,
+} from './utils/connector-error';
 
 export interface ArgoCDAppStatus {
   name: string;
@@ -57,10 +61,10 @@ export class ArgoCDConnector {
   /**
    * Get sync status and health for a specific ArgoCD application.
    */
-  async getAppStatus(appName: string): Promise<ArgoCDAppStatus> {
-    this.logger.debug(`ArgoCD: fetching status for app ${appName}`);
+  async getAppStatus(appName: string): Promise<ArgoCDAppStatus | ConnectorErrorResult<ArgoCDAppStatus>> {
+    return withConnectorErrorHandling('argocd', async () => {
+      this.logger.debug(`ArgoCD: fetching status for app ${appName}`);
 
-    try {
       const response = await this.request(`/api/v1/applications/${encodeURIComponent(appName)}`);
       const body = JSON.parse(response.body);
 
@@ -69,19 +73,16 @@ export class ArgoCDConnector {
       }
 
       return this.transformAppStatus(body);
-    } catch (error) {
-      this.logger.error(`ArgoCD getAppStatus failed: ${error.message}`);
-      throw error;
-    }
+    });
   }
 
   /**
    * List all applications with their sync and health status.
    */
-  async listApps(): Promise<ArgoCDAppStatus[]> {
-    this.logger.debug('ArgoCD: listing all applications');
+  async listApps(): Promise<ArgoCDAppStatus[] | ConnectorErrorResult<ArgoCDAppStatus[]>> {
+    return withConnectorErrorHandling('argocd', async () => {
+      this.logger.debug('ArgoCD: listing all applications');
 
-    try {
       const response = await this.request('/api/v1/applications');
       const body = JSON.parse(response.body);
 
@@ -91,10 +92,7 @@ export class ArgoCDConnector {
 
       const items = body.items || [];
       return items.map((item: any) => this.transformAppStatus(item));
-    } catch (error) {
-      this.logger.error(`ArgoCD listApps failed: ${error.message}`);
-      throw error;
-    }
+    });
   }
 
   /**
@@ -104,8 +102,12 @@ export class ArgoCDConnector {
     try {
       const apps = await this.listApps();
 
-      if (apps.length === 0) {
+      if (Array.isArray(apps) && apps.length === 0) {
         return 'No ArgoCD applications found.';
+      }
+
+      if (!Array.isArray(apps)) {
+        return `Failed to query ArgoCD: ${(apps as any)?.error || 'unknown error'}`;
       }
 
       const synced = apps.filter(a => a.syncStatus === 'Synced').length;

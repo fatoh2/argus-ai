@@ -41,7 +41,7 @@ export class GeminiService {
       // Find the tool function to execute
       const toolToExecute = tools.find(tool => tool.name === toolName);
       if (!toolToExecute) {
-        throw new Error();
+        throw new Error('Tool not found: ' + toolName);
       }
 
       // Execute the tool (this is a placeholder and needs to be implemented based on the actual tool)
@@ -49,12 +49,12 @@ export class GeminiService {
       try {
         // In a real scenario, you would dynamically call the appropriate function based on toolName
         // For this example, we'll simulate a successful execution
-        console.log(toolArgs);
+        console.log('Executing tool:', toolArgs);
         // Placeholder for actual tool execution logic
-        toolResult = { success: true, data: null }; 
+        toolResult = { success: true, data: {} };
       } catch (error) {
-        console.error(error);
-        throw new Error();
+        console.error('Tool execution failed:', error);
+        throw new Error('Tool execution failed: ' + (error as Error).message);
       }
 
       // Feed the result back to the model

@@ -154,7 +154,40 @@ Every PR you open must include:
 - Safe logging implemented? (yes/no — credentials redacted from logs?)
 - Input validation implemented? (yes/no — DTO validation + sanitization?)
 
+## Adding a New Connector
+1. Create the connector class in `src/connectors/` implementing the `Connector` interface
+2. Use `ConfigService` for configuration (inject via constructor)
+3. Add health check method `isHealthy(): Promise<boolean>`
+4. **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
+5. Register in `src/connectors/connectors.module.ts` (providers + exports)
+6. Add to `config.example.yaml` with placeholder values
+7. Write unit tests with stubbed HTTP responses (see `connector-error.spec.ts` for error handling pattern)
+8. Update `docs/connectors.md` with available methods and example questions
+9. Escalate to PM — new connectors always require PM review before merging
+
+## PR Format
+```
+Title: [ai] short description
+
+Body:
+## What changed
+<which connector or feature>
+
+## Example questions now answerable
+- "..."
+- "..."
+
+## Security review
+- Is this connector truly read-only? (yes/no — explain)
+- What data can Claude now see? (be explicit)
+- Health check implemented? (yes/no)
+- Graceful degradation implemented? (yes/no — wrapped with withConnectorErrorHandling?)
+- Safe logging implemented? (yes/no — credentials redacted from logs?)
+- Input validation implemented? (yes/no — DTO validation + sanitization?)
+
+```
 ## Testing
 - Unit tests added? (yes/no)
 - Error handling tests included? (yes/no)
 - Log sanitization verified? (yes/no)
+```
