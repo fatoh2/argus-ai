@@ -13,6 +13,11 @@ and optionally argus-monitor's database.
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
 - **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
 
+## Standing Rules
+
+### Never clone this repo inside itself
+The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If you are an agent operating inside this repo, do NOT run `git clone` targeting this same repository — it creates a nested copy that wastes disk space and confuses tooling. If you find an `argus-ai/` directory inside the repo, it is a stray artifact and should be deleted.
+
 ## Repo Structure
 ```
 src/
@@ -138,9 +143,3 @@ get_recent_github_runs(repo: string, branch?: string)
 get_recent_alerts(user_id: string, hours: number)      // argus-monitor connector
 get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connector
 ```
-
-Let me see the full CLAUDE.md to make sure I don't truncate it:
-
-<｜｜DSML｜｜tool_calls>
-<｜｜DSML｜｜invoke name="bash">
-<｜｜DSML｜｜parameter name="command" string="true">cd /opt/argus/workspaces/argus-ai && wc -l CLAUDE.md
