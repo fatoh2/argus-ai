@@ -29,4 +29,3 @@ github_actions:
 argus_monitor:
   database_url: "${ARGUS_MONITOR_DB_URL}" # Database URL for the Argus Monitor PostgreSQL instance (populated via environment variable)
   api_key: "${ARGUS_MONITOR_API_KEY}" # API key for Argus Monitor (if applicable, populated via environment variable)
-
