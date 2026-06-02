@@ -34,130 +34,91 @@ Here's a list of environment variables used:
 | `LOKI_URL` | URL of your Loki instance | No | `http://localhost:3100` |
 | `ARGOCD_URL` | URL of your ArgoCD instance | No | `https://localhost:8080` |
 | `ARGOCD_AUTH_TOKEN` | Authentication token for ArgoCD | No | — |
-| `GITHUB_TOKEN` | GitHub Personal Access Token with `workflow` scope | No | — |
-| `ARGUS_MONITOR_DB_URL` | Database URL for the Argus Monitor PostgreSQL instance | No | — |
+| `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No | — |
+| `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
 
-## LLM Service Options
+## Connector Setup
 
-The `LlmService` supports configurable options via the `LLM_SERVICE_OPTIONS` injection token. These can be provided when registering the module or in tests:
+Detailed setup instructions for each connector.
 
-| Option | Description | Default |
-|---|---|---|
-| `timeoutMs` | Hard timeout for LLM API calls (ms) | `30000` (30s) |
-| `maxPromptTokens` | Maximum estimated token count before truncation | `50000` |
-| `maxRetries` | Number of retry attempts on 5xx server errors | `1` |
+### Kubernetes Connector Setup
 
-### Default Behavior
+The Kubernetes connector can operate in two modes:
 
-- **Timeout**: LLM calls exceeding 30 seconds return `504 Gateway Timeout` to the client. Timeout errors are **not** retried.
-- **Retry**: On 5xx server errors (Internal Server Error, Service Unavailable), the call is retried once. If both attempts fail, the client receives `502 Bad Gateway`.
-- **Token Guard**: Prompts exceeding 50,000 estimated tokens are truncated by removing the oldest conversation history first. This prevents context overflow and excessive API costs.
-- **Safe Logging**: The LLM service never logs full prompt or response content. Log output is sanitized to redact API keys, tokens, and secrets.
+1.  **In-cluster (Recommended for Production)**: When Argus AI is deployed inside a Kubernetes cluster, it will automatically use the service account credentials assigned to its pod.
+    -   Ensure the service account has appropriate read-only permissions (e.g., `get`, `list`, `watch` for pods, deployments, events).
+    -   **Do not set `KUBECONFIG_PATH`** in your `config.yaml` or environment variables if deploying in-cluster.
 
-## Connector Configuration
+2.  **Out-of-cluster (Recommended for Local Development)**: For local development or when running outside a cluster, you can point Argus AI to a kubeconfig file.
+    -   Set the `KUBECONFIG_PATH` environment variable to the path of your kubeconfig file (e.g., `~/.kube/config`).
+    -   Ensure the context in your kubeconfig file is correctly configured to access your target cluster.
 
-Each connector reads its configuration from `config.yaml` via `ConfigService`. Below are the configuration sections and their fields.
+**Available Methods** (all wrapped with graceful degradation):
 
-### Gemini
+- `isHealthy()` — Health check
+- `listPods(namespace)` — List pods in a namespace
+- `getPodLogs(podName, namespace)` — Get logs for a specific pod
+- `describeDeployment(deploymentName, namespace)` — Describe a deployment
 
-```yaml
-gemini:
-  api_key: "${GEMINI_API_KEY}"
-  model: "gemini-2.0-flash"
-```
+### Prometheus Connector Setup
 
-### Kubernetes
+1.  **URL Configuration**: Set the `PROMETHEUS_URL` environment variable to the base URL of your Prometheus instance.
+    -   Example: `PROMETHEUS_URL=http://localhost:9090`
+    -   If Prometheus requires authentication, you will need to configure a reverse proxy or API gateway to handle authentication and forward requests to Prometheus, as Argus AI does not directly support Prometheus authentication.
 
-```yaml
-kubernetes:
-  kubeconfig_path: "~/.kube/config"   # Omit for in-cluster
-```
+### Loki Connector Setup
 
-### Prometheus
+1.  **URL Configuration**: Set the `LOKI_URL` environment variable to the base URL of your Loki instance.
+    -   Example: `LOKI_URL=http://localhost:3100`
+    -   Similar to Prometheus, if Loki requires authentication, consider using a reverse proxy.
 
-```yaml
-prometheus:
-  url: "http://localhost:9090"
-```
+**Available Methods** (all wrapped with graceful degradation):
 
-### Loki
+- `isHealthy()` — Health check
+- `queryLogs(labelSelector, start?, end?, level?, limit?)` — Execute a LogQL query for a specific label selector
+- `queryRange(options)` — Execute a LogQL range query with full options (query, start, end, limit)
+- `summarizeErrors(hours?, labelSelector?)` — Summarize error logs from the last N hours
 
-```yaml
-loki:
-  url: "http://localhost:3100"
-```
+### ArgoCD Connector Setup
 
-### ArgoCD
+1.  **URL Configuration**: Set the `ARGOCD_URL` environment variable to the base URL of your ArgoCD instance.
+    -   Example: `ARGOCD_URL=https://argocd.example.com`
+2.  **Authentication (Optional)**: If your ArgoCD instance requires authentication, provide an authentication token.
+    -   Set the `ARGOCD_AUTH_TOKEN` environment variable with a valid token. This token should have read-only access to the applications you wish to monitor.
+    -   You can generate an ArgoCD authentication token via the ArgoCD CLI or UI.
 
-```yaml
-argocd:
-  url: "https://argocd.example.com"
-  token: "${ARGOCD_AUTH_TOKEN}"
-```
+**Available Methods** (all wrapped with graceful degradation):
 
-### GitHub Actions
+- `isHealthy()` — Health check
+- `getAppStatus(appName)` — Get sync/health status for a specific application
+- `listApps()` — List all applications with their status
+- `getClusterSummary()` — Get a summary of all applications (healthy vs unhealthy)
 
-```yaml
-github_actions:
-  token: "${GITHUB_TOKEN}"
-```
+### GitHub Actions Connector Setup
 
-### Argus Monitor (Optional)
+1.  **Personal Access Token (PAT)**: Create a GitHub Personal Access Token (PAT).
+    -   Go to GitHub -> Settings -> Developer settings -> Personal access tokens -> Tokens (classic) -> Generate new token.
+    -   Grant the token the `workflow` scope (least privilege) or `repo` scope for private repositories.
+    -   Set the `GITHUB_TOKEN` environment variable to your generated PAT.
+    -   Example: `GITHUB_TOKEN=ghp_YOUR_GITHUB_PAT`
 
-```yaml
-argus_monitor:
-  database_url: "${ARGUS_MONITOR_DB_URL}"
-```
+### Argus Monitor Connector Setup
+
+1.  **Database URL**: Set the `ARGUS_MONITOR_DB_URL` environment variable to the connection string of your Argus Monitor database (preferably a read-only replica).
+    -   Example: `ARGUS_MONITOR_DB_URL=postgresql://user:password@host:5432/argus_monitor_db`
+    -   Ensure the provided user has read-only permissions to the necessary tables.
 
 ## Error Handling and Resilience
 
 Argus AI is designed to handle various operational challenges gracefully:
 
 - **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
-- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector methods are wrapped with `withConnectorErrorHandling()` which provides:
-  - **10-second timeout** — prevents hanging on unresponsive services
-  - **Structured error responses** — returns `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
-  - **Safe logging** — error logs include connector name, error type, and duration; API keys and tokens are automatically redacted
-- **LLM Error Resilience**:
-  - **30-second timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`
-  - **Automatic retry** — on 5xx server errors, the call is retried once before returning `502 Bad Gateway`
-  - **Token limit guard** — prompts exceeding 50k tokens truncate oldest history first
-  - **Safe logging** — the LLM service never logs full prompt/response content; all log output is sanitized
+- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
+- **Safe Logging**: Connector error logs include the connector name, error type, and duration, but **never API keys, tokens, or secrets**. A `sanitizeLog()` utility automatically redacts values matching common credential patterns (bearer tokens, API keys, secrets) from log output.
 - **Empty/Null/Large Responses**:
-  - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
-  - **Large Data Volumes**: Strategies like pagination, sampling, and summarization will be employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
+    -   **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
+    -   **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing. Loki queries are capped at 500 lines by default.
 
-## Performance Considerations
+## See Also
 
-- **Optimizing Queries**: When interacting with external systems like Prometheus and Loki, it's recommended to specify precise time ranges and aggressive filtering in your natural language queries to minimize the data volume retrieved. This directly impacts response times and resource usage.
-- **LLM Processing**: The time taken for LLM processing is directly proportional to the complexity and volume of the data provided. Efficient data retrieval and summarization are key to maintaining responsiveness.
-
-## Example `config.example.yaml`
-
-This section provides a full example of the `config.example.yaml` structure.
-Remember to copy this to `config.yaml` and fill in your actual values.
-
-```yaml
-gemini:
-  api_key: "${GEMINI_API_KEY}"
-  model: "gemini-2.0-flash"
-
-kubernetes:
-  kubeconfig_path: "~/.kube/config"
-
-prometheus:
-  url: "http://localhost:9090"
-
-loki:
-  url: "http://localhost:3100"
-
-argocd:
-  url: "https://argocd.example.com"
-  token: "${ARGOCD_AUTH_TOKEN}"
-
-github_actions:
-  token: "${GITHUB_TOKEN}"
-
-argus_monitor:
-  database_url: "${ARGUS_MONITOR_DB_URL}"
-```
+For the YAML-based configuration reference, see [Config File Reference](config.md).

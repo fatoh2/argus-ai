@@ -10,6 +10,8 @@ optionally argus-monitor's database.
 - **Backend**: NestJS + TypeScript
 - **Frontend**: React embeddable chat component
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
+- **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
+- **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
 - **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
 
 ## Repo Structure
@@ -18,20 +20,23 @@ src/
   app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint
   app.service.ts          # Core application service
-  chat/                   # Chat API module (REST endpoint + React widget)
+  main.ts                 # Bootstrap — global ValidationPipe with whitelist
+  chat/                   # Chat API module (REST endpoint)
+    chat.controller.ts    # POST /chat — input sanitization (strips control chars)
+    chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
+    chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
+    dto/
+      chat.dto.ts         # ChatDto — IsString, MaxLength(4000)
   connectors/
     connectors.module.ts  # Registers and exports all connectors
     utils/
       connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
+      connector-error.spec.ts  # Tests for error handling utility
     k8s-prometheus.connector.ts
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
-  llm/                    # LLM integration
-    gemini/               # Gemini API client (GeminiService)
-    llm.service.ts        # Timeout, retry, token guard, safe logging, health check
-    llm.controller.ts     # GET /health/llm endpoint
-    llm.module.ts         # Registers LlmService + LlmController
+  llm/                    # Gemini LLM integration
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -75,7 +80,18 @@ export class MyConnector {
 The utility provides:
 - **10-second timeout** (configurable via third parameter)
 - **Structured error responses**: `{ error: "<name> unavailable", data: null }`
-- **Safe logging**: connector name, error type, duration — API keys/tokens auto-redacted
+- **Safe logging**: connector name, error type, duration — API keys/tokens auto-redacted via `sanitizeLog()`
+
+### The `sanitizeLog()` Utility
+
+```typescript
+function sanitizeLog(message: string): string {
+  return message.replace(
+    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
+    '$1***redacted***$1',
+  );
+}
+```
 
 ### Example: Adding a connector to ConnectorsModule
 
@@ -93,36 +109,6 @@ import { ArgoCDConnector } from './argocd.connector';
 })
 export class ConnectorsModule {}
 ```
-
-## LLM Service Architecture
-
-The `LlmService` (`src/llm/llm.service.ts`) wraps all Gemini API calls with:
-
-- **30-second timeout** — calls exceeding this return `504 Gateway Timeout`. Timeout errors are not retried.
-- **Automatic retry** — on 5xx server errors, the call is retried once. If both attempts fail, the client receives `502 Bad Gateway`.
-- **Token limit guard** — prompts exceeding 50,000 estimated tokens are truncated by removing the oldest conversation history first.
-- **Safe logging** — the service never logs full prompt or response content. All log output is sanitized via `sanitizeForLog()` which redacts API keys, tokens, and secrets.
-- **Health check** — `GET /health/llm` makes a cheap test call to the Gemini API and returns `{ ok: boolean, latencyMs: number }`.
-
-Options are configurable via the `LLM_SERVICE_OPTIONS` injection token:
-
-```typescript
-export const LLM_SERVICE_OPTIONS = 'LLM_SERVICE_OPTIONS';
-
-export interface LlmServiceOptions {
-  timeoutMs?: number;       // Default: 30000
-  maxPromptTokens?: number; // Default: 50000
-  maxRetries?: number;      // Default: 1
-}
-```
-
-### Error Mapping
-
-LLM errors are mapped to appropriate HTTP status codes:
-- **429 / rate limit**: `429 Too Many Requests`
-- **401 / auth failure**: `401 Unauthorized`
-- **Timeout**: `504 Gateway Timeout`
-- **5xx / server error**: `502 Bad Gateway`
 
 ## The Tools Claude Can Call (read-only always)
 ```typescript
@@ -148,8 +134,10 @@ get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connecto
 - **ALWAYS** cap Prometheus queries to 24h range unless explicitly extended
 - **ALWAYS** test connectors with stub/mock responses before integration tests
 - **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService` for connector tests
-- **ALWAYS** wrap LLM calls with timeout (30s default), retry (once on 5xx), and token guard (50k)
-- **ALWAYS** use `sanitizeForLog()` before logging any LLM-related data — never log full prompts or responses
+- **ALWAYS** use `ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' })` in the root module
+- **ALWAYS** use `class-validator` DTOs with `@IsString()`, `@MaxLength()` for API input validation
+- **ALWAYS** strip control characters and null bytes from user input before processing
+- **ALWAYS** use `sanitizeLog()` to redact credentials from error logs
 
 ## Adding a New Connector
 1. Create the connector class in `src/connectors/` implementing the `Connector` interface
@@ -179,9 +167,11 @@ Body:
 - What data can Claude now see? (be explicit)
 - Health check implemented? (yes/no)
 - Graceful degradation implemented? (yes/no — wrapped with withConnectorErrorHandling?)
-- Safe logging ensured? (yes/no — no secrets in logs)
+- Safe logging implemented? (yes/no — credentials redacted from logs?)
+- Input validation implemented? (yes/no — DTO validation + sanitization?)
 
 ## Testing
-- Unit tests added? (yes/no — list test file)
-- Tests pass? (yes/no)
+- Unit tests added? (yes/no)
+- Error handling tests included? (yes/no)
+- Log sanitization verified? (yes/no)
 ```
