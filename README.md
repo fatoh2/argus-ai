@@ -16,6 +16,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **LLM Error Classification**: LLM errors are mapped to appropriate HTTP status codes — rate limits return `429 Too Many Requests`, auth failures return `401 Unauthorized`, and server errors return `502 Bad Gateway`.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
+- **One-Command Setup**: Run `bash scripts/setup.sh` on a fresh clone to check prerequisites (Node.js v20+, npm, Docker), create `.env` from `.env.example`, install dependencies, and pull Docker images — all in one step.
 - **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster. A `Makefile` provides one-command shortcuts for common dev tasks (`make up`, `make check`, `make test`, etc.).
 
 ## Demo
@@ -35,9 +36,17 @@ Argus AI currently supports read-only integration with:
 
 This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s cluster and start querying within 10 minutes.
 
-1.  **Prerequisites**: Ensure you have Node.js (v20+) and npm installed.
+1.  **Prerequisites**: Ensure you have Node.js (v20+), npm, and Docker installed. The setup script will verify all of these for you.
 
-2.  **Clone the repository**:
+2.  **One-command setup (recommended)**:
+    ```bash
+    bash scripts/setup.sh
+    ```
+    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs dependencies, and pulls Docker images. After it completes, skip to step 6 to run the app.
+
+    > **Note**: If you prefer to configure things manually, follow steps 3–6 instead.
+
+3.  **Clone the repository** (manual alternative):
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
@@ -45,7 +54,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
     > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
 
-3.  **Configure your connectors**:
+4.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
     ```bash
     cp config.example.yaml config.yaml
@@ -55,12 +64,12 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
     For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
 
-4.  **Install dependencies**:
+5.  **Install dependencies**:
     ```bash
     npm install
     ```
 
-5.  **Run locally (for development/testing)**:
+6.  **Run locally (for development/testing)**:
 
     **Option A — Makefile (recommended, includes full observability stack)**:
     ```bash
