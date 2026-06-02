@@ -33,7 +33,6 @@ This guide provides instructions for setting up your development environment, ru
     The backend will typically run on `http://localhost:3000`.
     > **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. During development, you can test this by sending 21 requests within 60 seconds — the 21st should return `429 Too Many Requests` with a `Retry-After` header. Rate limit hits are logged with a hashed IP and timestamp.
 
-
 ## Project Structure
 
 ```
@@ -44,9 +43,13 @@ src/
   chat/                   # Chat API module (REST endpoint + React widget)
   connectors/             # Read-only connector implementations
     connectors.module.ts  # Registers and exports all connectors
+    utils/
+      connector-error.ts  # Shared error-handling utility (timeout, structured errors, sanitized logging)
     k8s-prometheus.connector.ts
+    kubernetes.connector.ts
     loki.connector.ts     # Loki log querying (LogQL)
     argocd.connector.ts   # ArgoCD application status
+    prometheus/           # Prometheus connector sub-module
   llm/                    # LLM integration (Gemini API)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
@@ -71,6 +74,29 @@ export class LokiConnector {
 }
 ```
 
+## Graceful Degradation Pattern
+
+All connector methods should use the shared `withConnectorErrorHandling()` utility from `src/connectors/utils/connector-error.ts`. This provides:
+
+- **10-second timeout** — prevents hanging on unreachable endpoints
+- **Structured error responses** — returns `{ error: string, data: null }` instead of throwing
+- **Sanitized logging** — redacts credentials from error messages
+
+### Usage
+
+```typescript
+import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
+
+async myMethod(param: string): Promise<MyType | ConnectorErrorResult<MyType>> {
+  return withConnectorErrorHandling('my-connector', () => {
+    // Your connector logic here
+    return this.api.call(param);
+  });
+}
+```
+
+The return type should always be `T | ConnectorErrorResult<T>` so callers can check for the error shape.
+
 ## Adding New Connectors
 
 Follow the detailed steps outlined in [CLAUDE.md](../CLAUDE.md). Key steps include:
@@ -78,11 +104,12 @@ Follow the detailed steps outlined in [CLAUDE.md](../CLAUDE.md). Key steps inclu
 1.  Create the connector class in `src/connectors/` implementing the `Connector` interface.
 2.  Add a health check method `isHealthy(): Promise<boolean>`.
 3.  Use `ConfigService` for configuration (inject via constructor).
-4.  Register the connector in `src/connectors/connectors.module.ts` (add to `providers` and `exports`).
-5.  Update `config.example.yaml` with placeholder values.
-6.  Write unit tests with stubbed HTTP responses (see `loki.connector.spec.ts` and `argocd.connector.spec.ts` for examples).
-7.  Update `docs/connectors.md` with available methods and example questions.
-8.  **Escalate to PM**: New connectors always require PM review before merging due to security implications.
+4.  **Wrap all public methods with `withConnectorErrorHandling()`** from `./utils/connector-error` to ensure graceful degradation.
+5.  Register the connector in `src/connectors/connectors.module.ts` (add to `providers` and `exports`).
+6.  Update `config.example.yaml` with placeholder values.
+7.  Write unit tests with stubbed HTTP responses (see `loki.connector.spec.ts` and `argocd.connector.spec.ts` for examples).
+8.  Update `docs/connectors.md` with available methods and example questions.
+9.  **Escalate to PM**: New connectors always require PM review before merging due to security implications.
 
 ## Testing
 

@@ -26,92 +26,122 @@ Argus AI uses environment variables for sensitive information and flexible confi
 
 Here's a list of environment variables used:
 
-| Variable | Description | Required |
-|---|---|---|
-| `GEMINI_API_KEY` | Your API key for the Google Gemini API | Yes |
-| `KUBECONFIG_PATH` | Path to your Kubernetes kubeconfig file | No (uses in-cluster if omitted) |
-| `PROMETHEUS_URL` | URL of your Prometheus instance (e.g., `http://localhost:9090`) | No |
-| `LOKI_URL` | URL of your Loki instance (e.g., `http://localhost:3100`) | No |
-| `ARGOCD_URL` | URL of your ArgoCD instance (e.g., `https://argocd.example.com`) | No |
-| `ARGOCD_AUTH_TOKEN` | Authentication token for ArgoCD | No |
-| `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No |
-| `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No |
+| Variable | Description | Required | Default |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Your API key for the Google Gemini API | **Yes** | — |
+| `KUBECONFIG_PATH` | Path to your Kubernetes kubeconfig file | No | In-cluster config |
+| `PROMETHEUS_URL` | URL of your Prometheus instance | No | `http://localhost:9090` |
+| `LOKI_URL` | URL of your Loki instance | No | `http://localhost:3100` |
+| `ARGOCD_URL` | URL of your ArgoCD instance | No | `https://localhost:8080` |
+| `ARGOCD_AUTH_TOKEN` | Authentication token for ArgoCD | No | — |
+| `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No | — |
+| `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
 
-## Connector Configuration
+## Connector Setup
 
-### Kubernetes
+Detailed setup instructions for each connector.
 
-- `kubeconfig_path`: Path to your kubeconfig file. Supports `~` expansion and environment variables (e.g., `${KUBECONFIG_PATH}`). If left empty, Argus AI will attempt to use in-cluster configuration (suitable when running inside a Kubernetes cluster).
+### Kubernetes Connector Setup
 
-```yaml
-kubernetes:
-  kubeconfig_path: "~/.kube/config"
-```
+The Kubernetes connector can operate in two modes:
 
-### Prometheus
+1.  **In-cluster (Recommended for Production)**: When Argus AI is deployed inside a Kubernetes cluster, it will automatically use the service account credentials assigned to its pod.
+    -   Ensure the service account has appropriate read-only permissions (e.g., `get`, `list`, `watch` for pods, deployments, events).
+    -   **Do not set `KUBECONFIG_PATH`** in your `config.yaml` or environment variables if deploying in-cluster.
 
-- `url`: URL of your Prometheus instance.
+2.  **Out-of-cluster (Recommended for Local Development)**: For local development or when running outside a cluster, you can point Argus AI to a kubeconfig file.
+    -   Set the `KUBECONFIG_PATH` environment variable to the path of your kubeconfig file (e.g., `~/.kube/config`).
+    -   Ensure the context in your kubeconfig file is correctly configured to access your target cluster.
 
-```yaml
-prometheus:
-  url: "http://localhost:9090"
-```
+### Prometheus Connector Setup
 
-### Loki
+1.  **URL Configuration**: Set the `PROMETHEUS_URL` environment variable to the base URL of your Prometheus instance.
+    -   Example: `PROMETHEUS_URL=http://localhost:9090`
+    -   If Prometheus requires authentication, you will need to configure a reverse proxy or API gateway to handle authentication and forward requests to Prometheus, as Argus AI does not directly support Prometheus authentication.
 
-- `url`: URL of your Loki instance.
+### Loki Connector Setup
 
-```yaml
-loki:
-  url: "http://localhost:3100"
-```
+1.  **URL Configuration**: Set the `LOKI_URL` environment variable to the base URL of your Loki instance.
+    -   Example: `LOKI_URL=http://localhost:3100`
+    -   Similar to Prometheus, if Loki requires authentication, consider using a reverse proxy.
 
-### ArgoCD
+**Available Methods**:
 
-- `url`: URL of your ArgoCD instance.
-- `token`: ArgoCD authentication token. Populated via environment variable (e.g., `${ARGOCD_AUTH_TOKEN}`).
+- `isHealthy()` — Health check via `/ready` endpoint
+- `queryRange(options)` — Execute a LogQL range query (limit capped at 500)
+- `queryLogs(labelSelector, start?, end?, level?, limit?)` — Query logs for a specific label selector
+- `summarizeErrors(hours?, labelSelector?)` — Summarize error logs from the last N hours
 
-```yaml
-argocd:
-  url: "https://argocd.example.com"
-  token: "${ARGOCD_AUTH_TOKEN}"
-```
+### ArgoCD Connector Setup
 
-### GitHub Actions
+1.  **URL Configuration**: Set the `ARGOCD_URL` environment variable to the base URL of your ArgoCD instance.
+    -   Example: `ARGOCD_URL=https://argocd.example.com`
+2.  **Authentication (Optional)**: If your ArgoCD instance requires authentication, provide an authentication token.
+    -   Set the `ARGOCD_AUTH_TOKEN` environment variable with a valid token. This token should have read-only access to the applications you wish to monitor.
+    -   You can generate an ArgoCD authentication token via the ArgoCD CLI or UI.
 
-- `token`: GitHub Personal Access Token with `workflow` scope. Populated via environment variable (e.g., `${GITHUB_TOKEN}`).
+**Available Methods**:
 
-```yaml
-github_actions:
-  token: "${GITHUB_TOKEN}"
-```
+- `isHealthy()` — Health check via `/api/v1/session/userinfo`
+- `getAppStatus(appName)` — Get sync/health status for a specific application
+- `listApps()` — List all applications with their status
+- `getClusterSummary()` — Get a human-readable cluster health summary
 
-### Argus Monitor (Optional)
+### GitHub Actions Connector Setup
 
-- `database_url`: The database URL for the Argus Monitor PostgreSQL instance.
+1.  **Personal Access Token (PAT)**: Create a GitHub Personal Access Token (PAT).
+    -   Go to GitHub -> Settings -> Developer settings -> Personal access tokens -> Tokens (classic) -> Generate new token.
+    -   Grant the token the `workflow` scope (least privilege) or `repo` scope for private repositories.
+    -   Set the `GITHUB_TOKEN` environment variable to your generated PAT.
+    -   Example: `GITHUB_TOKEN=ghp_YOUR_GITHUB_PAT`
 
-```yaml
-argus_monitor:
-  database_url: "${ARGUS_MONITOR_DB_URL}"
-```
+### Argus Monitor Connector Setup
 
-## How Connectors Use ConfigService
-
-All connectors inject `ConfigService` to read their configuration:
-
-```typescript
-@Injectable()
-export class LokiConnector {
-  constructor(private configService: ConfigService) {
-    this.baseUrl = this.configService.get<string>('loki.url', 'http://localhost:3100');
-  }
-}
-```
+1.  **Database URL**: Set the `ARGUS_MONITOR_DB_URL` environment variable to the connection string of your Argus Monitor database (preferably a read-only replica).
+    -   Example: `ARGUS_MONITOR_DB_URL=postgresql://user:password@host:5432/argus_monitor_db`
+    -   Ensure the provided user has read-only permissions to the necessary tables.
 
 ## Error Handling and Resilience
 
-- **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error.
-- **Network Connectivity**: Temporary network failures to external connectors are handled gracefully with retry mechanisms.
+Argus AI is designed to handle various operational challenges gracefully:
+
+- **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
+- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
 - **Empty/Null/Large Responses**:
-  - **Empty/Null Data**: Processed gracefully, resulting in a "no data found" response.
-  - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage large responses (e.g., Loki queries capped at 500 lines).
+    - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
+    - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
+
+## Performance Considerations
+
+- **Optimizing Queries**: When interacting with external systems like Prometheus and Loki, it's recommended to specify precise time ranges and aggressive filtering in your natural language queries to minimize the data volume retrieved. This directly impacts response times and resource usage.
+- **LLM Processing**: The time taken for LLM processing is directly proportional to the complexity and volume of the data provided. Efficient data retrieval and summarization are key to maintaining responsiveness.
+
+## Example `config.example.yaml`
+
+This section provides a full example of the `config.example.yaml` structure.
+Remember to copy this to `config.yaml` and fill in your actual values.
+
+```yaml
+claude:
+  api_key: "${ANTHROPIC_API_KEY}"
+  model: "claude-3-sonnet-20240229"
+
+kubernetes:
+  kubeconfig_path: "~/.kube/config"
+
+prometheus:
+  url: "http://localhost:9090"
+
+loki:
+  url: "http://localhost:3100"
+
+argocd:
+  url: "https://argocd.example.com"
+  token: "${ARGOCD_AUTH_TOKEN}"
+
+github_actions:
+  token: "${GITHUB_TOKEN}"
+
+argus_monitor:
+  database_url: "${ARGUS_MONITOR_DB_URL}"
+```

@@ -2,6 +2,17 @@
 
 Argus AI integrates with various infrastructure components to provide comprehensive insights. All connectors are read-only to ensure the safety and integrity of your systems.
 
+## Graceful Degradation
+
+All connector methods use a shared error-handling utility that provides:
+
+- **Timeout protection** — every connector call is wrapped with a 10-second timeout. If a connector hangs or is unreachable, it returns a structured error instead of blocking the request.
+- **Structured error responses** — on failure, connectors return a `ConnectorErrorResult<T>` object with shape `{ error: string, data: null }` rather than throwing or returning empty defaults. The LLM context builder checks for this shape and inserts appropriate placeholders.
+- **Sanitized logging** — error logs include the connector name, error type, and duration, but never API keys, tokens, or secrets. Any value matching common credential patterns is redacted automatically.
+- **Health checks** — every connector implements `isHealthy(): Promise<boolean>` that returns `false` when the endpoint is unreachable, without crashing the application.
+
+This means a single failing connector (e.g., Prometheus is down) will not break queries against other connectors. The LLM will see a clear "Prometheus unavailable" message and can still answer questions using Kubernetes, Loki, or other available sources.
+
 ## Kubernetes Connector
 
 **Purpose**: Provides information about your Kubernetes cluster, including pod status, deployments, and events.
@@ -150,11 +161,12 @@ argus_monitor:
 
 To add a new connector, follow the guidelines in [CLAUDE.md](../CLAUDE.md). Key steps:
 
-1. Create the connector class in `src/connectors/` implementing the `Connector` interface
-2. Use `ConfigService` for configuration (inject via constructor)
-3. Add health check method `isHealthy(): Promise<boolean>`
-4. Register in `src/connectors/connectors.module.ts` (providers + exports)
-5. Update `config.example.yaml` with placeholder values
-6. Write unit tests with stubbed HTTP responses
-7. Update this document with available methods and example questions
-8. **Escalate to PM**: New connectors always require PM review before merging
+1. Create the connector class in `src/connectors/` implementing the `Connector` interface.
+2. Add a health check method `isHealthy(): Promise<boolean>`.
+3. Use `ConfigService` for configuration (inject via constructor).
+4. **Wrap all public methods with `withConnectorErrorHandling()`** from `./utils/connector-error` to ensure graceful degradation with timeout and structured error responses.
+5. Register the connector in `src/connectors/connectors.module.ts` (add to `providers` and `exports`).
+6. Update `config.example.yaml` with placeholder values.
+7. Write unit tests with stubbed HTTP responses (see `loki.connector.spec.ts` and `argocd.connector.spec.ts` for examples).
+8. Update this document with available methods and example questions.
+9. **Escalate to PM**: New connectors always require PM review before merging due to security implications.
