@@ -19,14 +19,14 @@ The `config.yaml` is structured into several top-level sections, each correspond
 Configuration for the Google Gemini API.
 
 -   `api_key`: Your Gemini API key. **Required.** Populated via environment variable (e.g., `${GEMINI_API_KEY}`).
--   `model`: The Gemini model to use (e.g., `gemini-2.0-flash`).
+-   `model`: The Gemini model to use (e.g., `gemini-1.5-flash`).
 
 Example:
 
 ```yaml
 gemini:
   api_key: "${GEMINI_API_KEY}"
-  model: "gemini-2.0-flash"
+  model: "gemini-1.5-flash"
 ```
 
 ### `kubernetes`
