@@ -32,11 +32,18 @@ src/
     utils/
       connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
       connector-error.spec.ts  # Tests for error handling utility
+      connector-error.spec.ts  # Tests for error handling utility
     k8s-prometheus.connector.ts
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
   llm/                    # Gemini LLM integration
+    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
+    llm.service.ts        # LlmService — tool-use loop with timeout, retry, token guard
+    llm.service.spec.ts   # Tests for LlmService
+    llm.controller.ts     # GET /health/llm — LLM health check endpoint
+    llm.controller.spec.ts# Tests for LlmController
+    gemini/               # Google Gemini API client
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -139,34 +146,12 @@ get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connecto
 - **ALWAYS** strip control characters and null bytes from user input before processing
 - **ALWAYS** use `sanitizeLog()` to redact credentials from error logs
 
-## Adding a New Connector
-1. Create the connector class in `src/connectors/` implementing the `Connector` interface
-2. Use `ConfigService` for configuration (inject via constructor)
-3. Add health check method `isHealthy(): Promise<boolean>`
-4. **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
-5. Register in `src/connectors/connectors.module.ts` (providers + exports)
-6. Add to `config.example.yaml` with placeholder values
-7. Write unit tests with stubbed HTTP responses (see `connector-error.spec.ts` for error handling pattern)
-8. Update `docs/connectors.md` with available methods and example questions
-9. Escalate to PM — new connectors always require PM review before merging
-
-## PR Format
-```
-Title: [ai] short description
-
-Body:
-## What changed
-<which connector or feature>
-
-## Example questions now answerable
-- "..."
-- "..."
-
-## Security review
-- Is this connector truly read-only? (yes/no — explain)
-- What data can Claude now see? (be explicit)
-- Health check implemented? (yes/no)
-- Graceful degradation implemented? (yes/no — wrapped with withConnectorErrorHandling?)
+## PR Description Format
+Every PR you open must include:
+- What changed and why (link to issue)
+- How to test
+- Any risks or migration steps
+- Checklist: tests passing, CLAUDE.md rules followed, no secrets committed
 - Safe logging implemented? (yes/no — credentials redacted from logs?)
 - Input validation implemented? (yes/no — DTO validation + sanitization?)
 
@@ -174,4 +159,3 @@ Body:
 - Unit tests added? (yes/no)
 - Error handling tests included? (yes/no)
 - Log sanitization verified? (yes/no)
-```
