@@ -50,7 +50,7 @@ src/
   connectors/             # Read-only connector implementations
     connectors.module.ts  # Registers and exports all connectors
     utils/
-      connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
+      connector-error.ts  # Graceful degradation utility (timeout + AbortController + structured errors + log sanitization)
       connector-error.spec.ts  # Tests for error handling utility
     k8s-prometheus.connector.ts
     kubernetes.connector.ts
@@ -98,9 +98,10 @@ import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connec
 @Injectable()
 export class MyConnector {
   async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
-    return withConnectorErrorHandling('my-connector', async () => {
+    return withConnectorErrorHandling('my-connector', async (signal) => {
       // Your actual connector logic here
-      return await this.api.fetchData();
+      // Pass signal to HTTP requests for proper cancellation on timeout
+      return await this.api.fetchData({ signal });
     });
   }
 
@@ -117,10 +118,22 @@ export class MyConnector {
 
 ### What it provides
 
-- **10-second timeout** — calls that exceed this return `{ error: "<name> unavailable", data: null }` (configurable via third parameter)
+- **10-second timeout with AbortController** — calls that exceed this return `{ error: "<name> unavailable", data: null }` (configurable via third parameter). The underlying HTTP request is cancelled via `AbortController.abort()`.
 - **Structured errors** — callers always get a predictable shape, never an unhandled exception
 - **Safe logging** — logs include connector name, error type, and duration; API keys and tokens are automatically redacted via `sanitizeLog()`
 - **Custom timeout** — the third parameter accepts a custom timeout in milliseconds
+
+### AbortSignal Parameter
+
+The factory function receives an `AbortSignal` as its first argument:
+
+```typescript
+fn: (signal: AbortSignal) => Promise<T>
+```
+
+- **HTTP connectors** (ArgoCD, Loki): pass `signal` to `http.get({ signal })` for proper request cancellation
+- **Delegating connectors** (Kubernetes, K8sPrometheus): accept as `_signal` for API consistency
+- **Custom connectors**: if making HTTP requests, pass the signal to enable cancellation
 
 ### The `sanitizeLog()` Utility
 
