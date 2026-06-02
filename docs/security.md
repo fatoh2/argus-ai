@@ -60,6 +60,7 @@ The `/chat` endpoint implements multiple layers of input validation:
 ### Health Checks
 - Every connector implements an `isHealthy()` method that verifies connectivity before executing queries.
 - If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
+- The LLM service also exposes `GET /health/llm` which returns `{ ok: boolean, latencyMs: number }`.
 
 ### Timeout Protection
 - All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility.
@@ -80,90 +81,55 @@ function sanitizeLog(message: string): string {
 }
 ```
 
-- This ensures that operational debugging does not leak sensitive credentials into log aggregation systems.
-
-### Data Volume Management
-- When querying external systems (e.g., Loki), Argus AI caps responses to prevent memory exhaustion and context overflow:
-  - **Loki**: Maximum 500 log lines per query
-  - **Prometheus**: Maximum 24-hour range unless explicitly requested
-- These limits are enforced at the connector level, not the LLM level.
-
 ## 4. LLM Security
 
-### API Key Management
-- The Google Gemini API key is loaded from the `GEMINI_API_KEY` environment variable.
-- The key is never logged, exposed in error messages, or included in any output.
-- The LLM service uses the key only for authenticating API calls to Google Gemini.
+### Safe Logging
+The LLM service (`LlmService`) implements its own `sanitizeForLog()` utility that redacts:
+- Alphanumeric strings 20+ characters (API keys, tokens)
+- URLs containing potential tokens
+- JSON fields named `apiKey`, `token`, `secret`, `password`
 
-### Prompt Safety
-- All user messages are sanitized before being sent to the LLM (see Section 2).
-- The LLM is instructed to never execute commands or make changes to infrastructure — it is a read-only assistant.
-- The LLM is instructed to never reveal its system prompt or internal instructions.
+The LLM service **never logs full prompt or response content** — only metadata (token count, message count, attempt number, success/failure status).
 
-### Response Safety
-- LLM responses are validated before being returned to the user.
-- The LLM is instructed to avoid generating harmful, biased, or misleading content.
-- All LLM responses are logged for audit purposes (without user PII).
+### Error Classification
+LLM errors are mapped to appropriate HTTP status codes to prevent information leakage:
 
-## 5. Operational Security
+| Error Type | HTTP Status | Logged As |
+|---|---|---|
+| Timeout | `504 Gateway Timeout` | `LLM request timed out` |
+| Rate limit / quota | `429 Too Many Requests` | `LLM rate limit exceeded` |
+| Auth failure | `401 Unauthorized` | `LLM authentication failed` |
+| Server error | `502 Bad Gateway` | `LLM service unavailable after retries` |
 
-### Logging
-- **Never log sensitive data**: API keys, tokens, secrets, and user PII are never written to logs.
-- **Structured logging**: Use `@nestjs/common` `Logger` with context names for all logging.
-- **Log levels**: Use `Logger.log()` for info, `Logger.warn()` for warnings, `Logger.error()` for errors.
-- **Rate limit logging**: Rate limit hits log a hashed IP (SHA-256, first 16 chars), not the raw IP.
+Error messages are sanitized before logging — the original error message is passed through `sanitizeForLog()` to redact any embedded secrets.
 
-### Error Handling
-- **Never expose stack traces** to end users — all errors are caught and returned as structured responses.
-- **Never expose internal configuration** in error messages.
-- **Graceful degradation**: All connector failures return structured `ConnectorErrorResult` objects, never raw exceptions.
+### Token Limit Guard
+- Prompts exceeding 50k estimated tokens are truncated by removing oldest messages first.
+- This prevents excessively large prompts from being sent to the LLM API, reducing the risk of prompt injection through accumulated history.
 
-### Dependency Management
-- Regularly update dependencies to patch known vulnerabilities.
-- Use `npm audit` to identify and fix security issues.
-- Pin major dependency versions in `package.json` to prevent unexpected breaking changes.
+### Timeout Protection
+- LLM calls have a **30-second hard timeout** enforced via `Promise.race`.
+- Timeout errors are NOT retried — they fail fast with `504 Gateway Timeout`.
+- This prevents a malicious or buggy prompt from holding the LLM connection indefinitely.
 
-## 6. Deployment Security
-
-### Environment Isolation
-- Use separate environments for development, staging, and production.
-- Never use production credentials in development environments.
-- Use Kubernetes Secrets or similar mechanisms for managing sensitive configuration in production.
+## 5. Deployment Security
 
 ### Network Security
-- Run Argus AI in a private network segment with access only to necessary services.
-- Use TLS for all external communications (Gemini API, ArgoCD, etc.).
-- Implement network policies to restrict egress traffic from the Argus AI pod.
+- Deploy Argus AI within a private network or behind a reverse proxy.
+- Use HTTPS for all external communications.
+- Restrict network access to only the necessary endpoints (Kubernetes API, Prometheus, Loki, ArgoCD, GitHub API).
 
-### Monitoring
-- Monitor for unusual API usage patterns that might indicate abuse.
-- Set up alerts for repeated authentication failures or rate limit violations.
-- Regularly review access logs for suspicious activity.
+### Secrets Management
+- Use a secrets management solution (e.g., Kubernetes Secrets, HashiCorp Vault, AWS Secrets Manager) for production deployments.
+- Avoid hardcoding secrets in configuration files or environment variables in plain text.
 
-## 7. Incident Response
+### Regular Updates
+- Keep all dependencies up to date to patch known vulnerabilities.
+- Regularly update the Gemini API client library and other dependencies.
+- Monitor security advisories for the NestJS framework and related packages.
 
-If a security incident is suspected:
+## See Also
 
-1. **Immediately revoke** any potentially compromised API keys or tokens.
-2. **Review logs** for the affected time period (logs never contain sensitive data, but may show unusual patterns).
-3. **Identify the root cause** and implement fixes.
-4. **Rotate all credentials** that may have been exposed.
-5. **Document the incident** and update security procedures as needed.
-
-## 8. Security Checklist
-
-Before deploying Argus AI to production:
-
-- [ ] All API keys and tokens are stored as environment variables or in Kubernetes Secrets
-- [ ] `config.yaml` contains no hardcoded secrets
-- [ ] Kubernetes service account has minimum required permissions (read-only)
-- [ ] GitHub token has only `workflow` scope
-- [ ] Argus Monitor database user has read-only access
-- [ ] Rate limiting is enabled and configured appropriately
-- [ ] Input validation and sanitization is active
-- [ ] Logging is configured to not capture sensitive data
-- [ ] All connectors have health checks and graceful degradation
-- [ ] TLS is enabled for all external communications
-- [ ] Network policies restrict egress traffic
-- [ ] Monitoring and alerting is in place
-- [ ] Dependencies are up to date (`npm audit` passes)
+- [Configuration Reference](configuration.md) — environment variable setup
+- [Development Guide](development.md) — local development setup
+- [Connectors Documentation](connectors.md) — connector architecture
