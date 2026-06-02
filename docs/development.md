@@ -28,17 +28,72 @@ This guide provides instructions for setting up your development environment, ru
 
     You can also use a `.env` file for environment variables. The app uses `@nestjs/config` which loads `.env` automatically.
 
-4.  **Run Locally**:
-    To start the NestJS backend:
+4.  **Run Locally with Docker Compose (recommended)**:
+
+    The `docker-compose.dev.yml` file provides a complete local observability stack so you can test connectors without a real Kubernetes cluster.
+
+    ```bash
+    # Start the full stack
+    docker compose -f docker-compose.dev.yml up -d
+    ```
+
+    This starts the following services:
+
+    | Service | Image | Port | Purpose |
+    |---------|-------|------|---------|
+    | argus-ai | local build | 3000 | NestJS app, auto-wired to local Prometheus/Loki |
+    | prometheus | prom/prometheus:latest | 9090 | Self-scraping metrics, also scrapes argus-ai |
+    | loki | grafana/loki:latest | 3100 | Log aggregation |
+    | promtail | grafana/promtail:latest | — | Ships host logs to Loki |
+    | grafana | grafana/grafana:latest | 3001 | Visualises Prometheus + Loki (auto-provisioned datasources) |
+
+    **Verify the stack is running**:
+    ```bash
+    # Prometheus
+    curl http://localhost:9090/-/healthy
+
+    # Loki
+    curl http://localhost:3100/ready
+
+    # Grafana (open in browser)
+    open http://localhost:3001
+    ```
+
+    The app is auto-configured via environment variables in `docker-compose.dev.yml`:
+    - `PROMETHEUS_URL=http://prometheus:9090`
+    - `LOKI_URL=http://loki:3100`
+
+    > **Note**: Grafana uses anonymous admin access for dev convenience. This is disabled in production.
+
+    **Stop the stack**:
+    ```bash
+    docker compose -f docker-compose.dev.yml down
+    ```
+
+5.  **Run Locally without Docker (Node.js only)**:
+
+    To start just the NestJS backend without the observability stack:
     ```bash
     npm run start:dev
     ```
-    The backend will typically run on `http://localhost:3000`.
+    The backend will run on `http://localhost:3000`. You will need a separate Prometheus and Loki instance (or mock their responses).
+
     > **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. During development, you can test this by sending 21 requests within 60 seconds — the 21st should return `429 Too Many Requests` with a `Retry-After` header. Rate limit hits are logged with a hashed IP and timestamp.
 
 ## Project Structure
 
 ```
+docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
+docker/
+  prometheus/
+    prometheus.yml         # Prometheus config — scrapes itself + argus-ai
+  promtail/
+    promtail.yml           # Promtail config — ships /var/log/*.log to Loki
+  grafana/
+    datasources/
+      datasources.yaml     # Auto-provisioned Prometheus + Loki datasources
+    dashboards/
+      dashboards.yaml      # Dashboard provisioning config
 src/
   app.module.ts           # Root module — registers ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint

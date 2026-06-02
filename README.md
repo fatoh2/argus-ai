@@ -16,6 +16,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **LLM Error Classification**: LLM errors are mapped to appropriate HTTP status codes — rate limits return `429 Too Many Requests`, auth failures return `401 Unauthorized`, and server errors return `502 Bad Gateway`.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
+- **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster.
 
 ## Demo
 
@@ -61,10 +62,18 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```
 
 5.  **Run locally (for development/testing)**:
+
+    **Option A — Docker Compose (recommended, includes full observability stack)**:
+    ```bash
+    docker compose -f docker-compose.dev.yml up -d
+    ```
+    This starts the full stack: Argus AI (port 3000), Prometheus (port 9090), Loki (port 3100), and Grafana (port 3001). The app is auto-wired to the local Prometheus and Loki instances. See [docs/development.md](docs/development.md) for details.
+
+    **Option B — Direct Node.js**:
     ```bash
     npm run start:dev
     ```
-    This will start the NestJS backend, typically on `http://localhost:3000`.
+    This will start the NestJS backend alone, typically on `http://localhost:3000`. You will need a separate Prometheus and Loki instance.
 
 6.  **Start Querying!**
     Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:

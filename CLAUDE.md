@@ -12,6 +12,7 @@ and optionally argus-monitor's database.
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
 - **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
+- **Local Dev**: Docker Compose (`docker-compose.dev.yml`) with Prometheus, Loki, Grafana
 
 ## Standing Rules
 
@@ -20,6 +21,17 @@ The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If yo
 
 ## Repo Structure
 ```
+docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
+docker/
+  prometheus/
+    prometheus.yml         # Prometheus config — scrapes itself + argus-ai
+  promtail/
+    promtail.yml           # Promtail config — ships /var/log/*.log to Loki
+  grafana/
+    datasources/
+      datasources.yaml     # Auto-provisioned Prometheus + Loki datasources
+    dashboards/
+      dashboards.yaml      # Dashboard provisioning config
 src/
   app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint
