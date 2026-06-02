@@ -31,6 +31,14 @@ This document outlines the security considerations and best practices for deploy
     - **Command Injection**: If the query is used to construct shell commands (not a primary use case for Argus AI, but a general concern).
     - **API Call Injection**: If the query is parsed to construct specific API calls (e.g., Prometheus query language, Kubernetes API parameters), improper sanitization could lead to injection vulnerabilities in those underlying systems.
 
+### Input Validation Layers
+The `/chat` endpoint implements multiple layers of input validation:
+
+1. **DTO Validation**: `ChatDto` uses `class-validator` decorators (`@IsString()`, `@MaxLength(4000)`) to validate message structure and length.
+2. **Global ValidationPipe**: `main.ts` registers a global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true`, ensuring only expected fields are accepted and unknown fields are rejected.
+3. **Control Character Stripping**: The `ChatController` strips control characters (`\x00-\x08`, `\x0B`, `\x0C`, `\x0E-\x1F`, `\x7F`) and null bytes from messages before processing.
+4. **Empty Message Rejection**: After sanitization, empty messages are rejected with a `400 Bad Request`.
+
 ### LLM Guardrails
 - In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses.
 
@@ -58,7 +66,17 @@ This document outlines the security considerations and best practices for deploy
 
 ### Sanitized Error Logging
 - Connector error logs include the connector name, error type, and duration, but **never API keys, tokens, or secrets**.
-- A `sanitizeLog()` utility automatically redacts values matching common credential patterns (bearer tokens, API keys, secrets) from log output.
+- A `sanitizeLog()` utility automatically redacts values matching common credential patterns from log output:
+
+```typescript
+function sanitizeLog(message: string): string {
+  return message.replace(
+    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
+    '$1***redacted***$1',
+  );
+}
+```
+
 - This ensures that operational debugging does not leak sensitive credentials into log aggregation systems.
 
 ### Data Volume Management
@@ -70,31 +88,42 @@ This document outlines the security considerations and best practices for deploy
 
 ### Network Connectivity and Error Handling
 - Argus AI implements robust error handling for network connectivity issues when interacting with external connectors.
-- Temporary network failures are handled with retries, and persistent failures are reported gracefully without exposing sensitive internal information.
+- Temporary network failures are handled gracefully, and persistent failures are reported without exposing sensitive internal information.
 
-### Rate Limiting and Caching
-- **API Rate Limiting**: The `/chat` endpoint is protected by a rate limiter, allowing a maximum of 20 requests per minute per IP address. This prevents abuse and ensures the stability and availability of the service.
-- The underlying implementation considers rate limiting for external API calls to prevent overwhelming connected services.
-- Caching mechanisms may be employed for frequently requested, non-sensitive data to improve performance and reduce external API load.
+## 4. API Security
 
-## 4. Log Security
+### Rate Limiting
+- The `/chat` endpoint is protected by a custom `ChatRateLimitGuard` that enforces a maximum of **20 requests per minute per IP address**.
+- When the limit is exceeded, the API returns a `429 Too Many Requests` response with a `Retry-After` header (in seconds).
+- Rate limit hits are logged with a **hashed IP** (SHA-256, first 16 characters) and timestamp for monitoring, without storing raw IP addresses.
+- The rate limiter respects the `X-Forwarded-For` header for reverse proxy deployments.
 
-### Automatic Credential Redaction
-- The `withConnectorErrorHandling()` utility includes a `sanitizeLog()` function that automatically redacts sensitive patterns from error messages before they are written to logs:
-  - Bearer tokens (e.g., `Bearer sk-1234...`)
-  - API keys (e.g., `api_key=abc123...`)
-  - Authentication tokens (e.g., `token: ghp_xxxx...`)
-  - Secrets (e.g., `secret: my-secret-value...`)
-- Redacted values are replaced with `***redacted***` in log output.
-- This prevents accidental credential leakage through error messages, stack traces, or connection failures.
+### Input Validation
+- All API inputs are validated using `class-validator` decorators on DTOs.
+- A global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` ensures only expected fields are accepted.
+- Control characters and null bytes are stripped from user messages before processing.
 
-## 5. Deployment Security
+## 5. Logging Security
 
-### Principle of Least Privilege
-- Deploy Argus AI with the principle of least privilege. Ensure its runtime environment (e.g., Kubernetes Pods) has only the necessary permissions and access to resources.
+### Never Log Credentials
+- All log messages are sanitized to remove API keys, bearer tokens, and secrets before output.
+- The `sanitizeLog()` utility is applied to all connector error logs.
+- Logs contain operational information (connector name, error type, duration) but never sensitive credentials.
+
+### Hashed IP Logging
+- Rate limit hits log a hashed version of the client IP (SHA-256, first 16 characters) rather than the raw IP address.
+- This allows monitoring and abuse detection without storing personally identifiable information.
+
+## 6. Deployment Security
+
+### Environment-Specific Configuration
+- Use different `.env` files or environment variable configurations for development, staging, and production environments.
+- Never share production credentials with development environments.
+
+### Kubernetes Secrets
+- When deploying to Kubernetes, store sensitive environment variables as Kubernetes Secrets.
+- Mount secrets as environment variables or volume mounts, never hardcode them in configuration files.
 
 ### Regular Updates
-- Keep Argus AI dependencies and the underlying operating system/container images regularly updated to patch known vulnerabilities.
-
-### Monitoring and Logging
-- Integrate Argus AI's logs with your central logging and monitoring solutions to detect and respond to suspicious activity.
+- Keep all dependencies up to date to patch known vulnerabilities.
+- Regularly review and update connector permissions to ensure least-privilege access.
