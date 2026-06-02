@@ -1,8 +1,5 @@
-import { Module } from "@nestjs/common";
-import { DeepSeekService } from "./deepseek.service";
+import { Module } from '@nestjs/common';
+import { DeepSeekService } from './deepseek.service';
 
-@Module({
-  providers: [DeepSeekService],
-  exports: [DeepSeekService],
-})
+@Module({ providers: [DeepSeekService], exports: [DeepSeekService] })
 export class DeepSeekModule {}
