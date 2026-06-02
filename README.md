@@ -42,6 +42,8 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     cd argus-ai
     ```
 
+> **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
+
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
     ```bash
