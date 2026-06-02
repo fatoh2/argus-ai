@@ -1,3 +1,5 @@
+> **Note**: This document reflects the security posture as of the latest release. See [README.md](../README.md) for a quick summary.
+
 # Security Best Practices for Argus AI
 
 This document outlines the security considerations and best practices for deploying and operating Argus AI.
@@ -102,6 +104,24 @@ function sanitizeLog(message: string): string {
 - All API inputs are validated using `class-validator` decorators on DTOs.
 - A global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` ensures only expected fields are accepted.
 - Control characters and null bytes are stripped from user messages before processing.
+
+### No Destructive Commands
+- The AI's output is filtered to prevent it from suggesting or executing any destructive shell commands.
+- All connectors are strictly read-only — no write operations are exposed to the LLM.
+- The system prompt and tool definitions explicitly forbid destructive actions.
+
+### Encrypted History
+- User query history and log content are never stored in plaintext.
+- They are encrypted at rest to protect user privacy and data security.
+- Rate-limit monitoring uses hashed IPs (SHA-256, first 16 characters) rather than raw IP addresses.
+
+### No Hardcoded Secrets
+- API keys and other sensitive credentials are never hardcoded in source code.
+- All secrets are loaded from environment variables via NestJS `ConfigService`.
+- The `config.yaml` file is excluded from Git via `.gitignore` — only `config.example.yaml` is committed.
+
+### Limited Data Access
+- Connectors are designed to access only the minimum necessary data to fulfill their function. For example, Loki queries are capped at 500 lines, and Prometheus queries are capped at a 24-hour range by default.
 
 ## 5. Logging Security
 
