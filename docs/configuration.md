@@ -102,6 +102,13 @@ The Kubernetes connector can operate in two modes:
     -   Set the `KUBECONFIG_PATH` environment variable or add it to your `config.yaml`.
     -   The path supports `~` expansion and environment variable references (e.g., `${HOME}/.kube/config`).
 
+**Available Methods** (all wrapped with graceful degradation):
+
+- `isHealthy()` — Health check
+- `listPods(namespace)` — List pods in a namespace
+- `getPodLogs(podName, namespace)` — Get logs for a specific pod
+- `describeDeployment(deploymentName, namespace)` — Describe a deployment
+
 ### Prometheus Connector Setup
 
 1.  Ensure your Prometheus instance is accessible from where Argus AI is running.
@@ -114,11 +121,25 @@ The Kubernetes connector can operate in two modes:
 2.  Set the `LOKI_URL` environment variable or add it to your `config.yaml`.
 3.  If your Loki instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
+**Available Methods** (all wrapped with graceful degradation):
+
+- `isHealthy()` — Health check
+- `queryLogs(labelSelector, start?, end?, level?, limit?)` — Execute a LogQL query for a specific label selector
+- `queryRange(options)` — Execute a LogQL range query with full options (query, start, end, limit)
+- `summarizeErrors(hours?, labelSelector?)` — Summarize error logs from the last N hours
+
 ### ArgoCD Connector Setup
 
 1.  Ensure your ArgoCD instance is accessible from where Argus AI is running.
 2.  Generate an ArgoCD authentication token with appropriate read-only permissions.
 3.  Set the `ARGOCD_URL` and `ARGOCD_AUTH_TOKEN` environment variables or add them to your `config.yaml`.
+
+**Available Methods** (all wrapped with graceful degradation):
+
+- `isHealthy()` — Health check
+- `getAppStatus(appName)` — Get sync/health status for a specific application
+- `listApps()` — List all applications with their status
+- `getClusterSummary()` — Get a summary of all applications (healthy vs unhealthy)
 
 ### GitHub Actions Connector Setup
 
@@ -135,10 +156,20 @@ The Kubernetes connector can operate in two modes:
 
 Argus AI is designed to handle various operational challenges gracefully:
 
-- **Invalid Configuration**: The application will fail to start if critical configuration (e.g., LLM API key) is missing.
-- **Connector Failures**: All connectors implement graceful degradation. If a connector fails (e.g., Prometheus is unreachable), the LLM will inform the user that the service is unavailable and continue processing with available data.
-- **LLM Timeouts**: The LLM service has a configurable hard timeout (`LLM_TIMEOUT_MS`, default 30s). If the LLM does not respond within this time, the request is aborted and a `504 Gateway Timeout` is returned.
-- **LLM Retries**: On 5xx server errors, the LLM service will retry up to `LLM_MAX_RETRIES` (default 1) times before returning a `502 Bad Gateway`.
-- **Prompt Truncation**: If the accumulated chat history exceeds `LLM_MAX_TOKENS` (default 50000), the oldest messages are truncated to keep the prompt within limits.
+- **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
+- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** (using AbortController to cancel the underlying HTTP request) via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
+- **LLM Error Resilience**:
+  - **30-second hard timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`. Timeout errors are NOT retried.
+  - **Automatic retry** — on 5xx server errors, the call is retried once (configurable via `LLM_MAX_RETRIES`) before returning `502 Bad Gateway`.
+  - **Token limit guard** — prompts exceeding 50k estimated tokens (configurable via `LLM_MAX_TOKENS`) truncate oldest history first.
+  - **Safe logging** — the LLM service never logs full prompt or response content; all log output is sanitized via `sanitizeForLog()`.
+- **Empty/Null/Large Responses**:
+  - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
+  - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
 - **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
 - **Input Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
+
+## See Also
+
+- [Config File Reference](config.md) — detailed `config.yaml` structure
+- [Development Guide](development.md) — local setup and project structure

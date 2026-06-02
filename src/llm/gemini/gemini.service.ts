@@ -36,6 +36,7 @@ export class GeminiService {
       ?.map((p: any) => p.text)
       ?.join('') ?? '';
 
+
     return text || 'I was unable to generate a response.';
   }
 }
