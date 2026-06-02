@@ -11,6 +11,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
 - **Input Validation & Sanitization**: The `/chat` endpoint validates message length (max 4000 characters), strips control characters and null bytes, and rejects empty messages with a `400 Bad Request`.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
+- **LLM Error Resilience**: LLM calls have a 30-second timeout, automatic retry on 5xx errors, and a 50k-token prompt limit guard. A `GET /health/llm` endpoint provides LLM health monitoring.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
 
