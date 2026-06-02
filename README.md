@@ -16,7 +16,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **LLM Error Classification**: LLM errors are mapped to appropriate HTTP status codes — rate limits return `429 Too Many Requests`, auth failures return `401 Unauthorized`, and server errors return `502 Bad Gateway`.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
-- **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster.
+- **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster. A `Makefile` provides one-command shortcuts for common dev tasks (`make up`, `make check`, `make test`, etc.).
 
 ## Demo
 
@@ -62,13 +62,29 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
 5.  **Run locally (for development/testing)**:
 
-    **Option A — Docker Compose (recommended, includes full observability stack)**:
+    **Option A — Makefile (recommended, includes full observability stack)**:
+    ```bash
+    make up
+    ```
+    This starts the Docker dev stack (Prometheus, Loki, Grafana) and the NestJS app in watch mode. The app is auto-wired to the local Prometheus and Loki instances. See [docs/development.md](docs/development.md) for details.
+
+    Other useful Makefile commands:
+    ```bash
+    make down    # Stop the dev stack
+    make check   # Type-check + lint
+    make test    # Run tests
+    make health  # Check LLM health endpoint
+    make logs    # Tail Docker logs
+    make help    # Show all commands
+    ```
+
+    **Option B — Docker Compose directly**:
     ```bash
     docker compose -f docker-compose.dev.yml up -d
+    npm run start:dev
     ```
-    This starts the full stack: Argus AI (port 3000), Prometheus (port 9090), Loki (port 3100), and Grafana (port 3001). The app is auto-wired to the local Prometheus and Loki instances. See [docs/development.md](docs/development.md) for details.
 
-    **Option B — Direct Node.js**:
+    **Option C — Direct Node.js (no observability stack)**:
     ```bash
     npm run start:dev
     ```
