@@ -44,7 +44,10 @@ src/
   chat/                   # Chat API module (REST endpoint + React widget)
   connectors/             # Read-only connector implementations
     connectors.module.ts  # Registers and exports all connectors
+    utils/
+      connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
     k8s-prometheus.connector.ts
+    kubernetes.connector.ts
     loki.connector.ts     # Loki log querying (LogQL)
     argocd.connector.ts   # ArgoCD application status
   llm/                    # LLM integration (Gemini API)
@@ -71,6 +74,42 @@ export class LokiConnector {
 }
 ```
 
+## Graceful Degradation Pattern
+
+All connector methods should be wrapped with the `withConnectorErrorHandling` utility to ensure graceful degradation when external services are unavailable.
+
+### Usage
+
+```typescript
+import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
+
+@Injectable()
+export class MyConnector {
+  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
+    return withConnectorErrorHandling('my-connector', async () => {
+      // Your actual connector logic here
+      return await this.api.fetchData();
+    });
+  }
+
+  async isHealthy(): Promise<boolean> {
+    try {
+      const result = await this.getData();
+      return !(result && typeof result === 'object' && 'error' in result);
+    } catch {
+      return false;
+    }
+  }
+}
+```
+
+### What it provides
+
+- **10-second timeout** — calls that exceed this return `{ error: "<name> unavailable", data: null }`
+- **Structured errors** — callers always get a predictable shape, never an unhandled exception
+- **Safe logging** — logs include connector name, error type, and duration; API keys and tokens are automatically redacted
+- **Custom timeout** — the third parameter accepts a custom timeout in milliseconds
+
 ## Adding New Connectors
 
 Follow the detailed steps outlined in [CLAUDE.md](../CLAUDE.md). Key steps include:
@@ -78,11 +117,12 @@ Follow the detailed steps outlined in [CLAUDE.md](../CLAUDE.md). Key steps inclu
 1.  Create the connector class in `src/connectors/` implementing the `Connector` interface.
 2.  Add a health check method `isHealthy(): Promise<boolean>`.
 3.  Use `ConfigService` for configuration (inject via constructor).
-4.  Register the connector in `src/connectors/connectors.module.ts` (add to `providers` and `exports`).
-5.  Update `config.example.yaml` with placeholder values.
-6.  Write unit tests with stubbed HTTP responses (see `loki.connector.spec.ts` and `argocd.connector.spec.ts` for examples).
-7.  Update `docs/connectors.md` with available methods and example questions.
-8.  **Escalate to PM**: New connectors always require PM review before merging due to security implications.
+4.  **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`.
+5.  Register the connector in `src/connectors/connectors.module.ts` (add to `providers` and `exports`).
+6.  Update `config.example.yaml` with placeholder values.
+7.  Write unit tests with stubbed HTTP responses (see `connector-error.spec.ts` for the error handling pattern).
+8.  Update `docs/connectors.md` with available methods and example questions.
+9.  **Escalate to PM**: New connectors always require PM review before merging due to security implications.
 
 ## Testing
 
@@ -90,6 +130,7 @@ Argus AI uses Jest for testing.
 
 - **Unit Tests**: Located alongside the code they test (e.g., `*.spec.ts`). These should use stubbed or mocked dependencies.
 - **Connector Tests**: Use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService`.
+- **Error Handling Tests**: The `connector-error.spec.ts` file tests timeout behavior, success/failure paths, and log sanitization (verifying that API keys are redacted from logs).
 
 To run all tests:
 ```bash
