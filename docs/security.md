@@ -34,7 +34,38 @@ This document outlines the security considerations and best practices for deploy
 ### LLM Guardrails
 - In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses.
 
-## 3. Connector Interaction Security
+## 3. LLM Interaction Security
+
+### Safe Logging
+- The `LlmService` **never logs full prompt or response content**. Only metadata (token count, message count, attempt number) is logged.
+- All log output is sanitized via the `sanitizeForLog()` utility which redacts:
+  - API keys and tokens (alphanumeric strings 20+ characters)
+  - URLs that may contain credentials
+  - JSON fields named `apiKey`, `token`, `secret`, or `password`
+- This ensures that even if a prompt accidentally contains sensitive data, it will not appear in logs.
+
+### Token Limit Guard
+- Prompts exceeding 50,000 estimated tokens are automatically truncated by removing the oldest conversation history first.
+- This prevents context overflow attacks and limits the blast radius of any single request.
+
+### Timeout Protection
+- LLM calls have a hard **30-second timeout**. If the Gemini API does not respond within this window, the call is aborted and the client receives a `504 Gateway Timeout` response.
+- This prevents slow or malicious LLM responses from tying up server resources indefinitely.
+
+### Retry Policy
+- On 5xx server errors (Internal Server Error, Service Unavailable), the call is retried **once**.
+- Timeout errors and 4xx client errors are **never retried** — they fail immediately with appropriate HTTP status codes.
+- This prevents cascading failures while avoiding unnecessary retries on client errors.
+
+### Error Classification
+- LLM errors are mapped to appropriate HTTP status codes:
+  - **429 / rate limit**: `429 Too Many Requests`
+  - **401 / auth failure**: `401 Unauthorized`
+  - **Timeout**: `504 Gateway Timeout`
+  - **5xx / server error**: `502 Bad Gateway`
+- This ensures clients receive meaningful, non-leaky error responses.
+
+## 4. Connector Interaction Security
 
 ### Read-Only Access
 - Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
@@ -74,27 +105,30 @@ This document outlines the security considerations and best practices for deploy
 
 ### Rate Limiting and Caching
 - **API Rate Limiting**: The `/chat` endpoint is protected by a rate limiter, allowing a maximum of 20 requests per minute per IP address. This prevents abuse and ensures the stability and availability of the service.
-- The underlying implementation considers rate limiting for external API calls to prevent overwhelming connected services.
-- Caching mechanisms may be employed for frequently requested, non-sensitive data to improve performance and reduce external API load.
-
-## 4. Log Security
-
-### Automatic Credential Redaction
-- The `withConnectorErrorHandling()` utility includes a `sanitizeLog()` function that automatically redacts sensitive patterns from error messages before they are written to logs:
-  - Bearer tokens (e.g., `Bearer sk-1234...`)
-  - API keys (e.g., `api_key=abc123...`)
-  - Authentication tokens (e.g., `token: ghp_xxxx...`)
-  - Secrets (e.g., `secret: my-secret-value...`)
-- Redacted values are replaced with `***redacted***` in log output.
-- This prevents accidental credential leakage through error messages, stack traces, or connection failures.
+- The underlying implementation considers rate limiting for external APIs (e.g., Gemini API) and handles `429 Too Many Requests` responses gracefully by returning a structured error to the user.
 
 ## 5. Deployment Security
 
-### Principle of Least Privilege
-- Deploy Argus AI with the principle of least privilege. Ensure its runtime environment (e.g., Kubernetes Pods) has only the necessary permissions and access to resources.
+### Network Security
+- Deploy Argus AI within a private network or behind a reverse proxy (e.g., Nginx, API Gateway) to restrict access to the API.
+- Use HTTPS in production to encrypt all traffic between clients and the Argus AI server.
+- Ensure that the connectors (Kubernetes API, Prometheus, Loki, etc.) are only accessible from the Argus AI server's network.
 
-### Regular Updates
-- Keep Argus AI dependencies and the underlying operating system/container images regularly updated to patch known vulnerabilities.
+### Secret Management
+- For production deployments, use a dedicated secret management solution (e.g., Kubernetes Secrets, HashiCorp Vault, AWS Secrets Manager) to store and inject environment variables.
+- Avoid storing secrets in plaintext configuration files or environment variable files on disk.
 
-### Monitoring and Logging
-- Integrate Argus AI's logs with your central logging and monitoring solutions to detect and respond to suspicious activity.
+### Monitoring and Auditing
+- Monitor Argus AI's logs for unusual patterns, such as repeated authentication failures or unexpected error types.
+- Audit the connectors' access logs to verify that Argus AI is only performing read operations.
+- Monitor the `GET /health/llm` endpoint to track LLM API availability and latency over time.
+
+## 6. Incident Response
+
+If a security incident is suspected (e.g., potential credential exposure, unauthorized access):
+
+1. **Immediately revoke and rotate** any potentially compromised API keys, tokens, or credentials.
+2. **Review Argus AI logs** for any signs of unauthorized activity or data access.
+3. **Audit connector access logs** to verify the scope of any potential breach.
+4. **Update credentials** and redeploy Argus AI with the new secrets.
+5. **Document the incident** and implement measures to prevent recurrence.

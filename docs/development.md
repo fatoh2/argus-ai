@@ -33,6 +33,11 @@ This guide provides instructions for setting up your development environment, ru
     The backend will typically run on `http://localhost:3000`.
     > **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. During development, you can test this by sending 21 requests within 60 seconds — the 21st should return `429 Too Many Requests` with a `Retry-After` header. Rate limit hits are logged with a hashed IP and timestamp.
 
+    You can also check LLM health:
+    ```bash
+    curl http://localhost:3000/health/llm
+    # {"ok":true,"latencyMs":150}
+    ```
 
 ## Project Structure
 
@@ -51,6 +56,10 @@ src/
     loki.connector.ts     # Loki log querying (LogQL)
     argocd.connector.ts   # ArgoCD application status
   llm/                    # LLM integration (Gemini API)
+    gemini/               # Gemini API client
+    llm.service.ts        # Timeout, retry, token guard, safe logging, health check
+    llm.controller.ts     # GET /health/llm endpoint
+    llm.module.ts         # Registers LlmService + LlmController
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -110,6 +119,26 @@ export class MyConnector {
 - **Safe logging** — logs include connector name, error type, and duration; API keys and tokens are automatically redacted
 - **Custom timeout** — the third parameter accepts a custom timeout in milliseconds
 
+## LLM Service Architecture
+
+The `LlmService` (`src/llm/llm.service.ts`) wraps all Gemini API calls with:
+
+- **30-second timeout** — calls exceeding this return `504 Gateway Timeout`. Timeout errors are not retried.
+- **Automatic retry** — on 5xx server errors, the call is retried once. If both attempts fail, the client receives `502 Bad Gateway`.
+- **Token limit guard** — prompts exceeding 50,000 estimated tokens are truncated by removing the oldest conversation history first.
+- **Safe logging** — the service never logs full prompt or response content. All log output is sanitized via `sanitizeForLog()` which redacts API keys, tokens, and secrets.
+- **Health check** — `GET /health/llm` makes a cheap test call to the Gemini API and returns `{ ok: boolean, latencyMs: number }`.
+
+Options are configurable via the `LLM_SERVICE_OPTIONS` injection token:
+
+```typescript
+{
+  timeoutMs: 30000,       // Hard timeout in ms
+  maxPromptTokens: 50000, // Max estimated tokens before truncation
+  maxRetries: 1,          // Retry attempts on 5xx errors
+}
+```
+
 ## Adding New Connectors
 
 Follow the detailed steps outlined in [CLAUDE.md](../CLAUDE.md). Key steps include:
@@ -131,6 +160,8 @@ Argus AI uses Jest for testing.
 - **Unit Tests**: Located alongside the code they test (e.g., `*.spec.ts`). These should use stubbed or mocked dependencies.
 - **Connector Tests**: Use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService`.
 - **Error Handling Tests**: The `connector-error.spec.ts` file tests timeout behavior, success/failure paths, and log sanitization (verifying that API keys are redacted from logs).
+- **LLM Service Tests**: The `llm.service.spec.ts` file tests timeout behavior, retry logic, token truncation, safe logging, and health check functionality using mocked `GeminiService` and configurable `LLM_SERVICE_OPTIONS`.
+- **LLM Controller Tests**: The `llm.controller.spec.ts` file tests the `GET /health/llm` endpoint with mocked `LlmService`.
 
 To run all tests:
 ```bash

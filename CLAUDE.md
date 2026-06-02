@@ -27,7 +27,11 @@ src/
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
-  llm/                    # Gemini LLM integration
+  llm/                    # LLM integration
+    gemini/               # Gemini API client (GeminiService)
+    llm.service.ts        # Timeout, retry, token guard, safe logging, health check
+    llm.controller.ts     # GET /health/llm endpoint
+    llm.module.ts         # Registers LlmService + LlmController
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -90,6 +94,36 @@ import { ArgoCDConnector } from './argocd.connector';
 export class ConnectorsModule {}
 ```
 
+## LLM Service Architecture
+
+The `LlmService` (`src/llm/llm.service.ts`) wraps all Gemini API calls with:
+
+- **30-second timeout** — calls exceeding this return `504 Gateway Timeout`. Timeout errors are not retried.
+- **Automatic retry** — on 5xx server errors, the call is retried once. If both attempts fail, the client receives `502 Bad Gateway`.
+- **Token limit guard** — prompts exceeding 50,000 estimated tokens are truncated by removing the oldest conversation history first.
+- **Safe logging** — the service never logs full prompt or response content. All log output is sanitized via `sanitizeForLog()` which redacts API keys, tokens, and secrets.
+- **Health check** — `GET /health/llm` makes a cheap test call to the Gemini API and returns `{ ok: boolean, latencyMs: number }`.
+
+Options are configurable via the `LLM_SERVICE_OPTIONS` injection token:
+
+```typescript
+export const LLM_SERVICE_OPTIONS = 'LLM_SERVICE_OPTIONS';
+
+export interface LlmServiceOptions {
+  timeoutMs?: number;       // Default: 30000
+  maxPromptTokens?: number; // Default: 50000
+  maxRetries?: number;      // Default: 1
+}
+```
+
+### Error Mapping
+
+LLM errors are mapped to appropriate HTTP status codes:
+- **429 / rate limit**: `429 Too Many Requests`
+- **401 / auth failure**: `401 Unauthorized`
+- **Timeout**: `504 Gateway Timeout`
+- **5xx / server error**: `502 Bad Gateway`
+
 ## The Tools Claude Can Call (read-only always)
 ```typescript
 get_pod_status(namespace: string, label_selector?: string)
@@ -114,6 +148,8 @@ get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connecto
 - **ALWAYS** cap Prometheus queries to 24h range unless explicitly extended
 - **ALWAYS** test connectors with stub/mock responses before integration tests
 - **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService` for connector tests
+- **ALWAYS** wrap LLM calls with timeout (30s default), retry (once on 5xx), and token guard (50k)
+- **ALWAYS** use `sanitizeForLog()` before logging any LLM-related data — never log full prompts or responses
 
 ## Adding a New Connector
 1. Create the connector class in `src/connectors/` implementing the `Connector` interface
@@ -143,18 +179,9 @@ Body:
 - What data can Claude now see? (be explicit)
 - Health check implemented? (yes/no)
 - Graceful degradation implemented? (yes/no — wrapped with withConnectorErrorHandling?)
+- Safe logging ensured? (yes/no — no secrets in logs)
 
-## Checklist
-- [ ] Tests pass with stub responses
-- [ ] No write operations in connector
-- [ ] config.example.yaml updated
-- [ ] docs/connectors.md updated
-- [ ] No config.yaml committed
-- [ ] All methods wrapped with withConnectorErrorHandling()
+## Testing
+- Unit tests added? (yes/no — list test file)
+- Tests pass? (yes/no)
 ```
-
-## Escalate to PM when
-- Adding any new data source connector (PM reviews scope + security before merge)
-- Any change to how `GEMINI_API_KEY` is handled
-- Any expansion of what data argus-monitor connector can access
-- Gemini model version change (coordinate with PM on cost impact)

@@ -8,6 +8,9 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
 - **Graceful Degradation**: All connectors handle timeouts and failures gracefully — if a service is unreachable, the LLM receives a structured error and informs the user instead of crashing.
+- **LLM Error Resilience**: LLM calls have a hard 30-second timeout, automatic retry on server errors (once), and a 50k-token prompt limit guard that truncates oldest history first.
+- **Safe Logging**: The LLM service never logs full prompts or responses. All log output is sanitized to redact API keys, tokens, and secrets automatically.
+- **LLM Health Endpoint**: `GET /health/llm` makes a cheap test call to the Gemini API and returns `{ ok, latencyMs }` for monitoring and alerting.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP to prevent abuse.
@@ -69,6 +72,12 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
     **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
 
+    You can also check LLM health:
+    ```bash
+    curl http://localhost:3000/health/llm
+    # {"ok":true,"latencyMs":150}
+    ```
+
     Refer to [Example Queries](docs/examples.md) for more example queries.
 
 ## Configuration
@@ -100,22 +109,24 @@ See [Configuration Reference](docs/configuration.md) for full details.
 - **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
 - **Read-Only Access**: Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor). Ensure that the credentials provided are scoped to the minimum necessary read-only permissions.
 - **Secure Credential Management**: Use environment variables or a secure secret management system (e.g., Kubernetes Secrets, CI/CD secret management).
-- **Log Sanitization**: Error logs automatically redact API keys, bearer tokens, and secrets to prevent credential leakage through error messages.
+- **Log Sanitization**: Error logs automatically redact API keys, bearer tokens, and secrets to prevent credential leakage through error messages. The LLM service never logs full prompt or response content.
 - **Connector Timeouts**: All connector calls have a 10-second timeout to prevent hanging on unresponsive services.
+- **LLM Timeout Protection**: LLM calls have a hard 30-second timeout. If exceeded, the client receives a `504 Gateway Timeout` response.
+- **Token Limit Guard**: Prompts exceeding 50,000 tokens are automatically truncated (oldest history removed first) to prevent context overflow and excessive API costs.
 
 ## Architecture
 
 Argus AI uses a modular NestJS architecture with the following key components:
 
 - **Connectors Module** (`src/connectors/`): Read-only integrations with external services. All connector methods are wrapped with `withConnectorErrorHandling()` for graceful degradation — on timeout or failure, they return a structured `{ error, data: null }` response instead of throwing.
-- **LLM Module** (`src/llm/`): Google Gemini API integration with tool-use loop.
+- **LLM Module** (`src/llm/`): Google Gemini API integration with tool-use loop. Includes timeout handling (30s), retry logic (once on 5xx), token limit guard (50k), safe logging (sanitized output), and a `GET /health/llm` health check endpoint.
 - **Chat Module** (`src/chat/`): REST API endpoint with input validation and rate limiting.
 
 ## Project Structure
 
 ```
 src/
-  app.module.ts           # Root module
+  app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint
   app.service.ts          # Core application service
   chat/                   # Chat API module
@@ -127,6 +138,10 @@ src/
     loki.connector.ts
     argocd.connector.ts
   llm/                    # LLM integration
+    gemini/               # Gemini API client
+    llm.service.ts        # Timeout, retry, token guard, safe logging, health check
+    llm.controller.ts     # GET /health/llm endpoint
+    llm.module.ts         # Registers LlmService + LlmController
 config.example.yaml       # Template config
 ```
 
