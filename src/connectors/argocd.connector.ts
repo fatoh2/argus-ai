@@ -62,10 +62,10 @@ export class ArgoCDConnector {
    * Get sync status and health for a specific ArgoCD application.
    */
   async getAppStatus(appName: string): Promise<ArgoCDAppStatus | ConnectorErrorResult<ArgoCDAppStatus>> {
-    return withConnectorErrorHandling('argocd', async () => {
+    return withConnectorErrorHandling('argocd', async (signal) => {
       this.logger.debug(`ArgoCD: fetching status for app ${appName}`);
 
-      const response = await this.request(`/api/v1/applications/${encodeURIComponent(appName)}`);
+      const response = await this.request(`/api/v1/applications/${encodeURIComponent(appName)}`, signal);
       const body = JSON.parse(response.body);
 
       if (response.statusCode !== 200) {
@@ -80,10 +80,10 @@ export class ArgoCDConnector {
    * List all applications with their sync and health status.
    */
   async listApps(): Promise<ArgoCDAppStatus[] | ConnectorErrorResult<ArgoCDAppStatus[]>> {
-    return withConnectorErrorHandling('argocd', async () => {
+    return withConnectorErrorHandling('argocd', async (signal) => {
       this.logger.debug('ArgoCD: listing all applications');
 
-      const response = await this.request('/api/v1/applications');
+      const response = await this.request('/api/v1/applications', signal);
       const body = JSON.parse(response.body);
 
       if (response.statusCode !== 200) {
@@ -170,7 +170,7 @@ export class ArgoCDConnector {
     };
   }
 
-  private request(path: string): Promise<{ statusCode: number; body: string }> {
+  private request(path: string, signal?: AbortSignal): Promise<{ statusCode: number; body: string }> {
     return new Promise((resolve, reject) => {
       const url = new URL(path, this.baseUrl);
       const lib = url.protocol === 'https:' ? https : http;
@@ -185,7 +185,7 @@ export class ArgoCDConnector {
 
       const req = lib.get(
         url.toString(),
-        { headers, timeout: 10000 },
+        { headers, timeout: 10000, signal },
         (res) => {
           let data = '';
           res.on('data', (chunk) => (data += chunk));
@@ -195,7 +195,13 @@ export class ArgoCDConnector {
         },
       );
 
-      req.on('error', (err) => reject(err));
+      req.on('error', (err) => {
+        if (err.name === 'AbortError') {
+          reject(new Error('Request timed out'));
+        } else {
+          reject(err);
+        }
+      });
       req.on('timeout', () => {
         req.destroy();
         reject(new Error('Request timed out'));

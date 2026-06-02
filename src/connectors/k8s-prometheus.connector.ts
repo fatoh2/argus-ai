@@ -18,19 +18,19 @@ export class K8sPrometheusConnector {
   // ---------------------------------------------------------------------------
 
   async listPods(namespace: string = 'default'): Promise<any[] | ConnectorErrorResult<any[]>> {
-    return withConnectorErrorHandling('k8s prometheus', () =>
+    return withConnectorErrorHandling('k8s prometheus', (_signal) =>
       this.kubernetesConnector.listPods(namespace),
     );
   }
 
   async getPodLogs(podName: string, namespace: string = 'default'): Promise<string | ConnectorErrorResult<string>> {
-    return withConnectorErrorHandling('k8s prometheus', () =>
+    return withConnectorErrorHandling('k8s prometheus', (_signal) =>
       this.kubernetesConnector.getPodLogs(podName, namespace),
     );
   }
 
   async describeDeployment(deploymentName: string, namespace: string = 'default'): Promise<any | ConnectorErrorResult<any>> {
-    return withConnectorErrorHandling('k8s prometheus', () =>
+    return withConnectorErrorHandling('k8s prometheus', (_signal) =>
       this.kubernetesConnector.describeDeployment(deploymentName, namespace),
     );
   }
@@ -40,13 +40,13 @@ export class K8sPrometheusConnector {
   // ---------------------------------------------------------------------------
 
   async queryPrometheus(query: string): Promise<any | ConnectorErrorResult<any>> {
-    return withConnectorErrorHandling('k8s prometheus', () =>
+    return withConnectorErrorHandling('k8s prometheus', (_signal) =>
       this.prometheusConnector.instantQuery(query),
     );
   }
 
   async instantQueryPrometheus(query: string): Promise<any | ConnectorErrorResult<any>> {
-    return withConnectorErrorHandling('k8s prometheus', () =>
+    return withConnectorErrorHandling('k8s prometheus', (_signal) =>
       this.prometheusConnector.instantQuery(query),
     );
   }
@@ -57,7 +57,7 @@ export class K8sPrometheusConnector {
     end: string,
     step: string = '1m',
   ): Promise<any | ConnectorErrorResult<any>> {
-    return withConnectorErrorHandling('k8s prometheus', () =>
+    return withConnectorErrorHandling('k8s prometheus', (_signal) =>
       this.prometheusConnector.rangeQuery(query, Number(start), Number(end), step),
     );
   }

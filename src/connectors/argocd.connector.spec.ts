@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ArgoCDConnector } from './argocd.connector';
 import { ConfigService } from '@nestjs/config';
+import { ConnectorErrorResult } from './utils/connector-error';
 
 describe('ArgoCDConnector', () => {
   let connector: ArgoCDConnector;
@@ -39,13 +40,17 @@ describe('ArgoCDConnector', () => {
   });
 
   describe('getAppStatus', () => {
-    it('should throw when app not found', async () => {
+    it('should return structured error when app not found', async () => {
       jest.spyOn(connector as any, 'request').mockResolvedValue({
         statusCode: 404,
         body: JSON.stringify({ error: 'not found' }),
       });
 
-      await expect(connector.getAppStatus('nonexistent')).rejects.toThrow();
+      const result = await connector.getAppStatus('nonexistent');
+      expect(result).toEqual<ConnectorErrorResult<any>>({
+        error: 'argocd unavailable',
+        data: null,
+      });
     });
 
     it('should return formatted status for a valid app', async () => {
@@ -107,6 +112,16 @@ describe('ArgoCDConnector', () => {
       expect(apps[0].syncStatus).toBe('Synced');
       expect(apps[1].syncStatus).toBe('OutOfSync');
     });
+
+    it('should return structured error on request failure', async () => {
+      jest.spyOn(connector as any, 'request').mockRejectedValue(new Error('Connection refused'));
+
+      const result = await connector.listApps();
+      expect(result).toEqual<ConnectorErrorResult<any>>({
+        error: 'argocd unavailable',
+        data: null,
+      });
+    });
   });
 
   describe('getClusterSummary', () => {
@@ -127,6 +142,16 @@ describe('ArgoCDConnector', () => {
       expect(result).toContain('Total applications: 2');
       expect(result).toContain('app-2');
       expect(result).toContain('OutOfSync');
+    });
+
+    it('should handle connector failure gracefully', async () => {
+      jest.spyOn(connector, 'listApps').mockResolvedValue({
+        error: 'argocd unavailable',
+        data: null,
+      });
+
+      const result = await connector.getClusterSummary();
+      expect(result).toContain('Failed to query ArgoCD');
     });
   });
 });
