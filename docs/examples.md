@@ -238,3 +238,27 @@ Unhealthy applications:
   - payment-worker (sync: OutOfSync, health: Degraded)
   - database-backup (sync: Synced, health: Degraded)
 ```
+
+## Rate Limit Exceeded
+
+**Query**: (Any query sent more than 20 times in a minute)
+
+**Expected AI Response**: If you exceed the rate limit, the API returns a `429 Too Many Requests` response instead of the usual JSON. The response includes a `Retry-After` header (the authoritative source for retry timing) indicating the number of seconds to wait before retrying.
+
+Example Response (HTTP 429):
+```json
+{
+  "statusCode": 429,
+  "message": "Too Many Requests",
+  "retryAfterSeconds": 45
+}
+```
+
+> **Note**: The `Retry-After` HTTP header is the authoritative source for retry timing. The `retryAfterSeconds` field in the JSON body is provided for convenience and will always match the header value.
+
+The server also logs the event with a hashed IP address for monitoring:
+```
+Rate limit hit — IP hash: a1b2c3d4e5f6..., timeToExpire: 45000ms
+```
+
+**What to do**: Wait the number of seconds specified in the `Retry-After` header before sending another request. The limit resets on a rolling 60-second window per IP address.
