@@ -17,7 +17,26 @@ This guide provides instructions for setting up your development environment, ru
     npm install
     ```
 
-3.  **Configure Environment**: 
+3.  **Makefile shortcuts (recommended)**:
+
+    A `Makefile` provides one-command shortcuts for common development tasks. After installing dependencies, you can use:
+
+    ```bash
+    make help    # Show all available commands
+    make up      # Start Docker dev stack + NestJS watch mode
+    make down    # Stop Docker dev stack
+    make check   # Type-check + lint (tsc --noEmit && npm run lint)
+    make test    # Run tests (npm test)
+    make chat MSG="hello"  # Send a message to the chat API
+    make health  # Check LLM health endpoint (GET /health/llm)
+    make logs    # Tail Docker logs
+    ```
+
+    The `make up` command runs `docker compose -f docker-compose.dev.yml up -d` followed by `npm run start:dev`, so it starts the full observability stack and the NestJS app in one step.
+
+    > **Prerequisite**: `make` is typically pre-installed on Linux and macOS. Verify with `make --version`. If missing, install via `sudo apt-get install -y build-essential` (Linux) or Xcode Command Line Tools (macOS).
+
+4.  **Configure Environment**: 
     Copy `config.example.yaml` to `config.yaml` and fill in placeholder values. For local development, you can use local instances of Prometheus, Loki, etc., or mock their responses.
     ```bash
     cp config.example.yaml config.yaml
@@ -32,12 +51,12 @@ This guide provides instructions for setting up your development environment, ru
     # Edit .env — set DEEPSEEK_API_KEY=your-key-here
     ```
 
-4.  **Run Locally with Docker Compose (recommended)**:
+5.  **Run Locally with Docker Compose**:
 
     The `docker-compose.dev.yml` file provides a complete local observability stack so you can test connectors without a real Kubernetes cluster.
 
     ```bash
-    # Start the full stack
+    # Start the full stack (or use `make up` for one-command start)
     docker compose -f docker-compose.dev.yml up -d
     ```
 
@@ -72,9 +91,10 @@ This guide provides instructions for setting up your development environment, ru
     **Stop the stack**:
     ```bash
     docker compose -f docker-compose.dev.yml down
+    # Or use: make down
     ```
 
-5.  **Run Locally without Docker (Node.js only)**:
+6.  **Run Locally without Docker (Node.js only)**:
 
     To start just the NestJS backend without the observability stack:
     ```bash
@@ -87,6 +107,7 @@ This guide provides instructions for setting up your development environment, ru
 ## Project Structure
 
 ```
+Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
 docker/
   prometheus/
