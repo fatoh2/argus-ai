@@ -95,7 +95,7 @@ Key environment variables:
 | `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | Yes | — |
 | `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No | — |
 | `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
-| `LLM_MAX_PROMPT_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
+| `LLM_MAX_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
 | `KUBECONFIG_PATH` | Path to kubeconfig file | No | In-cluster config |
 | `PROMETHEUS_URL` | Prometheus URL | No | `http://localhost:9090` |

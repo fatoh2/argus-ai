@@ -26,7 +26,12 @@ This guide provides instructions for setting up your development environment, ru
     ```
     **Never commit `config.yaml` to Git!**
 
-    You can also use a `.env` file for environment variables. The app uses `@nestjs/config` which loads `.env` automatically.
+    You can also use a `.env` file for environment variables. The app uses `@nestjs/config` which loads `.env` automatically. Copy `.env.example` to `.env` and fill in your DeepSeek API key:
+
+    ```bash
+    cp .env.example .env
+    # Edit .env — set DEEPSEEK_API_KEY=your-key-here
+    ```
 
 4.  **Run Locally**:
     To start the NestJS backend:
@@ -59,14 +64,16 @@ src/
     kubernetes.connector.ts
     loki.connector.ts     # Loki log querying (LogQL)
     argocd.connector.ts   # ArgoCD application status
-  llm/                    # LLM integration (Gemini API)
-    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService and LlmController
+  llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
+    llm.module.ts         # LlmModule — imports DeepSeekModule, registers LlmService and LlmController
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, 50k token guard, health check, error mapping
     llm.service.spec.ts   # Tests for LlmService
     llm.controller.ts     # POST /llm/run-tool-use-loop + GET /health/llm — LLM health check endpoint
     llm.controller.spec.ts# Tests for LlmController
-    gemini/               # Google Gemini API client
+    deepseek/             # DeepSeek V3 API client (primary LLM)
+    gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
+.env.example              # Template — copy to .env, never commit .env with secrets
 ```
 
 ## Configuration Architecture
@@ -91,19 +98,19 @@ export class LokiConnector {
 
 ## LLM Service Architecture
 
-The `LlmService` is the core LLM integration layer. It wraps the Gemini API with:
+The `LlmService` is the core LLM integration layer. It wraps the DeepSeek V3 API (primary) with:
 
 ### Timeout Protection
 
-Uses `Promise.race` between the Gemini call and a timeout promise. If the call exceeds `timeoutMs` (default 30s), it rejects with `504 Gateway Timeout`. Timeout errors are NOT retried — they fail fast.
+Uses `Promise.race` between the DeepSeek call and a timeout promise. If the call exceeds `LLM_TIMEOUT_MS` (default 30s), it rejects with `504 Gateway Timeout`. Timeout errors are NOT retried — they fail fast.
 
 ### Token Limit Guard
 
-The `truncateConversation()` function estimates token count using `Math.ceil(text.length / 4)` and removes oldest messages first when the total exceeds `maxPromptTokens` (default 50k).
+The `truncateHistory()` function estimates token count using `Math.ceil(text.length / 4)` and removes oldest messages first when the total exceeds `LLM_MAX_TOKENS` (default 50k).
 
 ### Retry Logic
 
-On 5xx server errors, the call is retried up to `maxRetries` times (default 1). Non-retryable errors (4xx, auth failures, rate limits) fail immediately.
+On 5xx server errors, the call is retried up to `LLM_MAX_RETRIES` times (default 1). Non-retryable errors (4xx, auth failures, rate limits) fail immediately.
 
 ### Error Classification
 
@@ -138,61 +145,41 @@ All connector methods should be wrapped with the `withConnectorErrorHandling` ut
 import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
 
 @Injectable()
-export class MyConnector {
-  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
-    return withConnectorErrorHandling('my-connector', async (signal) => {
-      // Your actual connector logic here
-      // Pass signal to HTTP requests for proper cancellation on timeout
-      return await this.api.fetchData({ signal });
+export class LokiConnector {
+  async queryLogs(query: string, start: string, end: string): Promise<LokiResult[] | ConnectorErrorResult> {
+    return withConnectorErrorHandling('Loki', 'queryLogs', async () => {
+      const response = await fetch(`${this.baseUrl}/loki/api/v1/query_range?query=${encodeURIComponent(query)}&start=${start}&end=${end}`);
+      if (!response.ok) {
+        throw new Error(`Loki returned status ${response.status}`);
+      }
+      const data = await response.json();
+      return data.data.result;
     });
   }
-
-  async isHealthy(): Promise<boolean> {
-    try {
-      const result = await this.getData();
-      return !(result && typeof result === 'object' && 'error' in result);
-    } catch {
-      return false;
-    }
-  }
 }
 ```
 
-### What it provides
+### How It Works
 
-- **10-second timeout with AbortController** — calls that exceed this return `{ error: "<name> unavailable", data: null }` (configurable via third parameter). The underlying HTTP request is cancelled via `AbortController.abort()`.
-- **Structured errors** — callers always get a predictable shape, never an unhandled exception
-- **Safe logging** — logs include connector name, error type, and duration; API keys and tokens are automatically redacted via `sanitizeLog()`
-- **Custom timeout** — the third parameter accepts a custom timeout in milliseconds
+The `withConnectorErrorHandling` utility:
 
-### AbortSignal Parameter
+1. Wraps the connector call with a 10-second timeout using `AbortController`
+2. Catches any errors (timeout, network, HTTP) and returns a structured `ConnectorErrorResult`
+3. Sanitizes error messages for logging (redacts API keys, tokens, secrets)
+4. Never throws — always returns either the expected result or a `ConnectorErrorResult`
 
-The factory function receives an `AbortSignal` as its first argument:
+## Adding a New Connector
 
-```typescript
-fn: (signal: AbortSignal) => Promise<T>
-```
+To add a new read-only connector:
 
-- **HTTP connectors** (ArgoCD, Loki): pass `signal` to `http.get({ signal })` for proper request cancellation
-- **Delegating connectors** (Kubernetes, K8sPrometheus): accept as `_signal` for API consistency
-- **Custom connectors**: if making HTTP requests, pass the signal to enable cancellation
-
-### The `sanitizeLog()` Utility
-
-The `sanitizeLog()` function automatically redacts sensitive information from error logs:
-
-```typescript
-function sanitizeLog(message: string): string {
-  return message.replace(
-    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
-    '$1***redacted***$1',
-  );
-}
-```
+1. Create a new file in `src/connectors/` (e.g., `my-tool.connector.ts`)
+2. Implement a class with methods wrapped in `withConnectorErrorHandling()`
+3. Register it in `connectors.module.ts`
+4. Add configuration to `config.yaml` and `.env.example`
+5. Add the connector to the system prompt in `src/llm/gemini/systemPrompt.ts`
+6. Write tests in a `.spec.ts` file
 
 ## Testing
-
-### Running Tests
 
 ```bash
 # Run all tests
@@ -205,24 +192,4 @@ npm run test:cov
 npm run test:watch
 ```
 
-### Writing Tests
-
-- Use Jest with `@nestjs/testing` and mocked `ConfigService`
-- Test files should be co-located with their source files as `*.spec.ts`
-- Mock external dependencies (Gemini API, Kubernetes client, etc.)
-- Test both success and failure paths (timeouts, errors, empty responses)
-
-## Adding a New Connector
-
-1. Create the connector file in `src/connectors/`
-2. Implement `isHealthy(): Promise<boolean>`
-3. Wrap all public methods with `withConnectorErrorHandling('<name>', ...)`
-4. Register in `ConnectorsModule` (providers + exports)
-5. Add configuration to `config.example.yaml`
-6. Write tests in a co-located `*.spec.ts` file
-
-## See Also
-
-- [Configuration Reference](configuration.md) — full env var reference
-- [Connectors Documentation](connectors.md) — detailed connector architecture
-- [Security Best Practices](security.md) — security considerations
+All new code should include unit tests. Connector tests should mock external HTTP calls.
