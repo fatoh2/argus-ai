@@ -49,11 +49,11 @@ export class GeminiService {
       try {
         // In a real scenario, you would dynamically call the appropriate function based on toolName
         // For this example, we'll simulate a successful execution
-        console.log(, toolArgs);
+        console.log(toolArgs);
         // Placeholder for actual tool execution logic
-        toolResult = { success: true, data:  }; 
+        toolResult = { success: true, data: null }; 
       } catch (error) {
-        console.error(, error);
+        console.error(error);
         throw new Error();
       }
 
