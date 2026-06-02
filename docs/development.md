@@ -58,9 +58,9 @@ src/
     argocd.connector.ts   # ArgoCD application status
   llm/                    # LLM integration (Gemini API)
     llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
-    llm.service.ts        # LlmService — tool-use loop with timeout, retry, token guard
+    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
-    llm.controller.ts     # GET /health/llm — LLM health check endpoint
+    llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
     llm.controller.spec.ts# Tests for LlmController
     gemini/               # Google Gemini API client
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
