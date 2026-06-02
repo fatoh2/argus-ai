@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { KubernetesConnector } from './kubernetes.connector';
-import { PrometheusConnector } from './prometheus/prometheus.connector';
+import { PrometheusConnector } from './prometheus.connector';
 
 @Injectable()
 export class K8sPrometheusConnector {
