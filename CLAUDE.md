@@ -32,7 +32,6 @@ src/
     utils/
       connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
       connector-error.spec.ts  # Tests for error handling utility
-      connector-error.spec.ts  # Tests for error handling utility
     k8s-prometheus.connector.ts
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
