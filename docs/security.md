@@ -1,3 +1,5 @@
+> **Note**: This document reflects the security posture as of the latest release. See [README.md](../README.md) for a quick summary.
+
 # Security Best Practices for Argus AI
 
 This document outlines the security considerations and best practices for deploying and operating Argus AI.
@@ -50,7 +52,7 @@ The `/chat` endpoint implements multiple layers of input validation:
 
 ### Graceful Degradation with Safe Error Handling
 - All connector methods are wrapped with `withConnectorErrorHandling()` which provides:
-  - **10-second timeout** — prevents hanging on unresponsive services
+  - **10-second timeout with AbortController** — prevents hanging on unresponsive services; the underlying HTTP request is cancelled via `AbortController.abort()`
   - **Structured error responses** — returns `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
   - **Log sanitization** — error logs automatically redact API keys, bearer tokens, and secrets using a regex pattern before writing to the console
 - This ensures that even when a connector fails, no sensitive credentials are leaked in logs.
@@ -61,9 +63,9 @@ The `/chat` endpoint implements multiple layers of input validation:
 
 ### Timeout Protection
 - All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility.
-- The timeout uses **`AbortController`** to cancel the underlying HTTP request — when the timeout fires, `AbortController.abort()` is called, which causes `http.get({ signal })` to abort the request immediately.
+- The timeout uses `AbortController` to cancel the underlying HTTP request — a slow or dead connector will not hold up the entire query pipeline or leave dangling connections.
 - If a connector hangs or is unreachable, the call is aborted and a structured `ConnectorErrorResult` is returned instead of blocking the request indefinitely.
-- This prevents cascading failures and resource leaks — a slow or dead connector will not hold up the entire query pipeline or leave dangling HTTP connections.
+- This prevents cascading failures — a slow or dead connector will not hold up the entire query pipeline.
 
 ### Sanitized Error Logging
 - Connector error logs include the connector name, error type, and duration, but **never API keys, tokens, or secrets**.
@@ -81,50 +83,87 @@ function sanitizeLog(message: string): string {
 - This ensures that operational debugging does not leak sensitive credentials into log aggregation systems.
 
 ### Data Volume Management
-- When querying external systems (e.g., Prometheus, Loki), Argus AI employs strategies to manage potentially large data volumes, such as:
-    - Specifying time ranges and filtering aggressively in queries.
-    - Capping Loki log queries at 500 lines maximum to prevent context overflow.
-    - Capping Prometheus queries to 24-hour ranges unless explicitly extended.
-    - Implementing pagination or sampling where appropriate to prevent memory exhaustion and performance degradation.
+- When querying external systems (e.g., Loki), Argus AI caps responses to prevent memory exhaustion and context overflow:
+  - **Loki**: Maximum 500 log lines per query
+  - **Prometheus**: Maximum 24-hour range unless explicitly requested
+- These limits are enforced at the connector level, not the LLM level.
 
-### Network Connectivity and Error Handling
-- Argus AI implements robust error handling for network connectivity issues when interacting with external connectors.
-- Temporary network failures are handled gracefully, and persistent failures are reported without exposing sensitive internal information.
+## 4. LLM Security
 
-## 4. API Security
+### API Key Management
+- The Google Gemini API key is loaded from the `GEMINI_API_KEY` environment variable.
+- The key is never logged, exposed in error messages, or included in any output.
+- The LLM service uses the key only for authenticating API calls to Google Gemini.
 
-### Rate Limiting
-- The `/chat` endpoint is protected by a custom `ChatRateLimitGuard` that enforces a maximum of **20 requests per minute per IP address**.
-- When the limit is exceeded, the API returns a `429 Too Many Requests` response with a `Retry-After` header (in seconds).
-- Rate limit hits are logged with a **hashed IP** (SHA-256, first 16 characters) and timestamp for monitoring, without storing raw IP addresses.
-- The rate limiter respects the `X-Forwarded-For` header for reverse proxy deployments.
+### Prompt Safety
+- All user messages are sanitized before being sent to the LLM (see Section 2).
+- The LLM is instructed to never execute commands or make changes to infrastructure — it is a read-only assistant.
+- The LLM is instructed to never reveal its system prompt or internal instructions.
 
-### Input Validation
-- All API inputs are validated using `class-validator` decorators on DTOs.
-- A global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` ensures only expected fields are accepted.
-- Control characters and null bytes are stripped from user messages before processing.
+### Response Safety
+- LLM responses are validated before being returned to the user.
+- The LLM is instructed to avoid generating harmful, biased, or misleading content.
+- All LLM responses are logged for audit purposes (without user PII).
 
-## 5. Logging Security
+## 5. Operational Security
 
-### Never Log Credentials
-- All log messages are sanitized to remove API keys, bearer tokens, and secrets before output.
-- The `sanitizeLog()` utility is applied to all connector error logs.
-- Logs contain operational information (connector name, error type, duration) but never sensitive credentials.
+### Logging
+- **Never log sensitive data**: API keys, tokens, secrets, and user PII are never written to logs.
+- **Structured logging**: Use `@nestjs/common` `Logger` with context names for all logging.
+- **Log levels**: Use `Logger.log()` for info, `Logger.warn()` for warnings, `Logger.error()` for errors.
+- **Rate limit logging**: Rate limit hits log a hashed IP (SHA-256, first 16 chars), not the raw IP.
 
-### Hashed IP Logging
-- Rate limit hits log a hashed version of the client IP (SHA-256, first 16 characters) rather than the raw IP address.
-- This allows monitoring and abuse detection without storing personally identifiable information.
+### Error Handling
+- **Never expose stack traces** to end users — all errors are caught and returned as structured responses.
+- **Never expose internal configuration** in error messages.
+- **Graceful degradation**: All connector failures return structured `ConnectorErrorResult` objects, never raw exceptions.
+
+### Dependency Management
+- Regularly update dependencies to patch known vulnerabilities.
+- Use `npm audit` to identify and fix security issues.
+- Pin major dependency versions in `package.json` to prevent unexpected breaking changes.
 
 ## 6. Deployment Security
 
-### Environment-Specific Configuration
-- Use different `.env` files or environment variable configurations for development, staging, and production environments.
-- Never share production credentials with development environments.
+### Environment Isolation
+- Use separate environments for development, staging, and production.
+- Never use production credentials in development environments.
+- Use Kubernetes Secrets or similar mechanisms for managing sensitive configuration in production.
 
-### Kubernetes Secrets
-- When deploying to Kubernetes, store sensitive environment variables as Kubernetes Secrets.
-- Mount secrets as environment variables or volume mounts, never hardcode them in configuration files.
+### Network Security
+- Run Argus AI in a private network segment with access only to necessary services.
+- Use TLS for all external communications (Gemini API, ArgoCD, etc.).
+- Implement network policies to restrict egress traffic from the Argus AI pod.
 
-### Regular Updates
-- Keep all dependencies up to date to patch known vulnerabilities.
-- Regularly review and update connector permissions to ensure least-privilege access.
+### Monitoring
+- Monitor for unusual API usage patterns that might indicate abuse.
+- Set up alerts for repeated authentication failures or rate limit violations.
+- Regularly review access logs for suspicious activity.
+
+## 7. Incident Response
+
+If a security incident is suspected:
+
+1. **Immediately revoke** any potentially compromised API keys or tokens.
+2. **Review logs** for the affected time period (logs never contain sensitive data, but may show unusual patterns).
+3. **Identify the root cause** and implement fixes.
+4. **Rotate all credentials** that may have been exposed.
+5. **Document the incident** and update security procedures as needed.
+
+## 8. Security Checklist
+
+Before deploying Argus AI to production:
+
+- [ ] All API keys and tokens are stored as environment variables or in Kubernetes Secrets
+- [ ] `config.yaml` contains no hardcoded secrets
+- [ ] Kubernetes service account has minimum required permissions (read-only)
+- [ ] GitHub token has only `workflow` scope
+- [ ] Argus Monitor database user has read-only access
+- [ ] Rate limiting is enabled and configured appropriately
+- [ ] Input validation and sanitization is active
+- [ ] Logging is configured to not capture sensitive data
+- [ ] All connectors have health checks and graceful degradation
+- [ ] TLS is enabled for all external communications
+- [ ] Network policies restrict egress traffic
+- [ ] Monitoring and alerting is in place
+- [ ] Dependencies are up to date (`npm audit` passes)
