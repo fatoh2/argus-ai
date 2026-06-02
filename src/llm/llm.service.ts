@@ -1,56 +1,57 @@
-import { Injectable, HttpException, HttpStatus, Logger } from "@nestjs/common";
-import { DeepSeekService } from "./deepseek/deepseek.service";
+import { Injectable, HttpException, Logger } from '@nestjs/common';
+import { DeepSeekService } from './deepseek/deepseek.service';
 
-function estimateTokenCount(text: string): number {
-  return Math.ceil(text.length / 4);
-}
+function estimateTokens(text: string): number { return Math.ceil(text.length / 4); }
 
 function truncateHistory(
-  history: { role: string; content: string }[],
+  history: Array<{ role: string; content: string }>,
   maxTokens: number,
-): { role: string; content: string }[] {
-  let total = history.reduce((s, m) => s + estimateTokenCount(m.content), 0);
-  const truncated = [...history];
-  while (truncated.length > 0 && total > maxTokens) {
-    const removed = truncated.shift()!;
-    total -= estimateTokenCount(removed.content);
+): Array<{ role: string; content: string }> {
+  let total = history.reduce((s, m) => s + estimateTokens(m.content), 0);
+  const result = [...history];
+  while (result.length > 0 && total > maxTokens) {
+    const removed = result.shift()!;
+    total -= estimateTokens(removed.content);
   }
-  return truncated;
+  return result;
+}
+
+function redact(s: string): string {
+  return s.replace(/[A-Za-z0-9_-]{20,}/g, '[REDACTED]');
 }
 
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
-  private readonly timeoutMs = parseInt(process.env.LLM_TIMEOUT_MS || "30000");
-  private readonly maxTokens = parseInt(process.env.LLM_MAX_TOKENS || "50000");
+  private readonly timeoutMs = Number(process.env.LLM_TIMEOUT_MS ?? 30_000);
+  private readonly maxTokens = Number(process.env.LLM_MAX_TOKENS ?? 50_000);
 
   constructor(private readonly deepseek: DeepSeekService) {}
 
   async runToolUseLoop(
     message: string,
-    _tools: any[] = [],
-    history: { role: string; content: string }[] = [],
+    _tools: unknown[] = [],
+    history: Array<{ role: string; content: string }> = [],
   ): Promise<string> {
     const safeHistory = truncateHistory(history, this.maxTokens);
-    this.logger.log(
-      ,
-    );
+    this.logger.log(`LLM call: ~${estimateTokens(message)} tokens, ${safeHistory.length} history msgs`);
 
     try {
       const result = await Promise.race([
         this.deepseek.chat(message, safeHistory),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("LLM request timed out")), this.timeoutMs),
+          setTimeout(() => reject(new Error('LLM request timed out')), this.timeoutMs),
         ),
       ]);
       return result;
-    } catch (err: any) {
-      if (err.message?.includes("timed out")) {
-        this.logger.warn();
-        throw new HttpException({ statusCode: 504, message: "LLM request timed out", error: "Gateway Timeout" }, 504);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes('timed out')) {
+        this.logger.warn(`LLM timed out after ${this.timeoutMs}ms`);
+        throw new HttpException({ statusCode: 504, message: 'LLM request timed out', error: 'Gateway Timeout' }, 504);
       }
-      this.logger.error();
-      throw new HttpException({ statusCode: 502, message: "LLM service unavailable", error: "Bad Gateway" }, 502);
+      this.logger.error(`LLM failed: ${redact(msg)}`);
+      throw new HttpException({ statusCode: 502, message: 'LLM service unavailable', error: 'Bad Gateway' }, 502);
     }
   }
 
@@ -58,8 +59,8 @@ export class LlmService {
     const start = Date.now();
     try {
       await Promise.race([
-        this.deepseek.chat("Reply with exactly: ok"),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("timeout")), 10000)),
+        this.deepseek.chat('Reply with exactly: ok'),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10_000)),
       ]);
       return { ok: true, latencyMs: Date.now() - start };
     } catch {
