@@ -1,64 +1,71 @@
-# argus-ai — AI Integration Agent Rules
+# CLAUDE.md
 
-## Role
-You build and maintain Argus AI: an AI infrastructure assistant powered by Google Gemini
-API tool use, with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD, and
-optionally argus-monitor's database.
+This document outlines the coding standards and architectural principles for the Argus AI project, specifically tailored for development with Claude as an AI assistant.
 
-## Stack
-- **AI**: Google Gemini API (generative-ai SDK)
-- **Backend**: NestJS + TypeScript
-- **Frontend**: React embeddable chat component
-- **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
-- **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
-- **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
-- **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
+## 1. Architecture Principles
 
-## Repo Structure
-```
-src/
-  app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
-  app.controller.ts       # Health check endpoint
-  app.service.ts          # Core application service
-  main.ts                 # Bootstrap — global ValidationPipe with whitelist
-  chat/                   # Chat API module (REST endpoint)
-    chat.controller.ts    # POST /chat — input sanitization (strips control chars)
-    chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
-    chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
-    dto/
-      chat.dto.ts         # ChatDto — IsString, MaxLength(4000)
-  connectors/
-    connectors.module.ts  # Registers and exports all connectors
-    utils/
-      connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
-      connector-error.spec.ts  # Tests for error handling utility
-    k8s-prometheus.connector.ts
-    kubernetes.connector.ts
-    loki.connector.ts     # LogQL query wrapper
-    argocd.connector.ts   # ArgoCD API client
-  llm/                    # Gemini LLM integration
-    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
-    llm.service.ts        # LlmService — tool-use loop with timeout, retry, token guard
-    llm.service.spec.ts   # Tests for LlmService
-    llm.controller.ts     # GET /health/llm — LLM health check endpoint
-    llm.controller.spec.ts# Tests for LlmController
-    gemini/               # Google Gemini API client
-config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
-```
+- **Modularity**: Components should be loosely coupled and highly cohesive.
+- **Scalability**: Design for horizontal scaling where possible.
+- **Resilience**: Implement graceful degradation and error handling.
+- **Security**: Prioritize security at every layer.
+- **Observability**: Ensure systems are easily monitorable and debuggable.
+- **API-First**: Design APIs before implementation.
+- **Idempotency**: Operations should produce the same result if executed multiple times.
 
-## Connector Architecture
+## 2. Code Structure
 
-All connectors:
-- Are `@Injectable()` classes in `src/connectors/`
-- Use `ConfigService` for configuration (injected via constructor)
-- Implement `isHealthy(): Promise<boolean>` for health checks
-- Are registered in `ConnectorsModule` (providers + exports)
-- Are strictly read-only
-- **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
+### NestJS Application Structure
 
-### Graceful Degradation Pattern
+- **`src/main.ts`**: Application entry point.
+- **`src/app.module.ts`**: Root module.
+- **`src/modules/`**: Contains feature modules (e.g., `chat`, `connectors`, `auth`).
+  - Each module should have its own `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.resolver.ts` (if GraphQL), and `*.spec.ts` files.
+- **`src/common/`**: Shared utilities, decorators, interceptors, pipes, filters.
+- **`src/config/`**: Configuration management (e.g., `config.service.ts`, `configuration.ts`).
+- **`src/database/`**: Database-related code (e.g., TypeORM entities, migrations).
+- **`src/interfaces/`**: TypeScript interfaces and types.
+- **`src/connectors/`**: External service integrations (e.g., Kubernetes, ArgoCD, Prometheus).
 
-Every connector method must use `withConnectorErrorHandling`:
+### File Naming Conventions
+
+- `feature-name.module.ts`
+- `feature-name.controller.ts`
+- `feature-name.service.ts`
+- `feature-name.resolver.ts`
+- `feature-name.guard.ts`
+- `feature-name.interceptor.ts`
+- `feature-name.pipe.ts`
+- `feature-name.filter.ts`
+- `feature-name.entity.ts`
+- `feature-name.interface.ts`
+- `feature-name.dto.ts`
+- `feature-name.spec.ts` (for tests)
+
+## 3. TypeScript Best Practices
+
+- **Strict Typing**: Always use strict TypeScript.
+- **Interfaces over Types**: Prefer interfaces for object shapes.
+- **Readonly Properties**: Use `readonly` for properties that should not be reassigned.
+- **Enums**: Use `enum` for a set of named constants.
+- **Async/Await**: Prefer `async/await` for asynchronous operations.
+- **Error Handling**: Use `try/catch` blocks for error handling.
+- **Type Guards**: Use type guards for narrowing types.
+
+## 4. API Design (GraphQL & REST)
+
+- **Consistency**: Maintain consistent naming conventions and data structures.
+- **Versioning**: Use API versioning (e.g., `/v1/`).
+- **Pagination**: Implement pagination for large collections.
+- **Filtering/Sorting**: Provide options for filtering and sorting.
+- **Error Responses**: Standardize error response formats.
+
+## 5. Connectors
+
+Connectors are responsible for integrating with external systems (Kubernetes, ArgoCD, Prometheus, etc.).
+
+### `withConnectorErrorHandling()` Utility
+
+All connector methods that interact with external services **must** be wrapped with `withConnectorErrorHandling()` to ensure graceful degradation and consistent error responses.
 
 ```typescript
 import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
@@ -73,13 +80,11 @@ export class MyConnector {
     });
   }
 
-  async isHealthy(): Promise<boolean> {
-    try {
-      const result = await this.getData();
-      return !(result && typeof result === 'object' && 'error' in result);
-    } catch {
-      return false;
-    }
+  async getOtherData(): Promise<OtherData | ConnectorErrorResult<OtherData>> {
+    return withConnectorErrorHandling('my-connector', async () => {
+      // Logic that doesn't involve HTTP requests or needs a signal
+      return { value: 'some-data' };
+    }, 5000); // Custom 5-second timeout
   }
 }
 ```
@@ -104,103 +109,45 @@ fn: (signal: AbortSignal) => Promise<T>
 ### The `sanitizeLog()` Utility
 
 ```typescript
-function sanitizeLog(message: string): string {
-  return message.replace(
-    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
-    '$1***redacted***$1',
-  );
-}
+import { sanitizeLog } from './utils/sanitize-log';
+
+const sensitiveData = 'Bearer my-secret-token-123';
+const sanitized = sanitizeLog(sensitiveData); // 'Bearer [REDACTED]'
 ```
 
-### Example: Adding a connector to ConnectorsModule
+This utility automatically redacts sensitive information (API keys, bearer tokens, etc.) from log messages to prevent accidental exposure.
 
-```typescript
-// src/connectors/connectors.module.ts
-import { Module } from '@nestjs/common';
-import { K8sPrometheusConnector } from './k8s-prometheus.connector';
-import { KubernetesConnector } from './kubernetes.connector';
-import { LokiConnector } from './loki.connector';
-import { ArgoCDConnector } from './argocd.connector';
+## 6. Testing
 
-@Module({
-  providers: [K8sPrometheusConnector, KubernetesConnector, LokiConnector, ArgoCDConnector],
-  exports: [K8sPrometheusConnector, KubernetesConnector, LokiConnector, ArgoCDConnector],
-})
-export class ConnectorsModule {}
-```
+- **Unit Tests**: Use Jest for unit testing services, controllers, and utilities.
+- **Integration Tests**: Test the interaction between components.
+- **End-to-End Tests**: Use Supertest for testing API endpoints.
+- **Test Coverage**: Aim for high test coverage.
+- **Mocking**: Use mocks for external dependencies.
 
-## The Tools Claude Can Call (read-only always)
-```typescript
-get_pod_status(namespace: string, label_selector?: string)
-get_prometheus_metric(query: string, start: string, end: string)
-get_loki_logs(service: string, start: string, end: string, level?: string)
-get_argocd_app_status(app_name: string)
-get_recent_github_runs(repo: string, branch?: string)
-get_recent_alerts(user_id: string, hours: number)      // argus-monitor connector
-get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connector
-```
+## 7. Logging
 
-## Security Rules (strictest in the project)
-- **NEVER** add write operations to any connector — every connector is read-only
-- **NEVER** let Claude suggest destructive shell commands in its output — filter them
-- **NEVER** store user query history or log content in plaintext — encrypt at rest
-- **NEVER** hardcode API keys — use `ConfigService` + environment variables only
-- **NEVER** commit `config.yaml` (contains real endpoint URLs) — only `config.example.yaml`
-- **ALWAYS** add a health check to every connector before using it
-  - If endpoint unreachable: return graceful error, not a crash
-- **ALWAYS** wrap connector methods with `withConnectorErrorHandling()` for graceful degradation
-- **ALWAYS** cap Loki log queries to 500 lines max to avoid context overflow
-- **ALWAYS** cap Prometheus queries to 24h range unless explicitly extended
-- **ALWAYS** test connectors with stub/mock responses before integration tests
-- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService` for connector tests
-- **ALWAYS** use `ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' })` in the root module
-- **ALWAYS** use `class-validator` DTOs with `@IsString()`, `@MaxLength()` for API input validation
-- **ALWAYS** strip control characters and null bytes from user input before processing
-- **ALWAYS** use `sanitizeLog()` to redact credentials from error logs
+- **Winston**: Use Winston for structured logging.
+- **Log Levels**: Use appropriate log levels (debug, info, warn, error).
+- **Context**: Include relevant context in log messages.
 
-## PR Description Format
-Every PR you open must include:
-- What changed and why (link to issue)
-- How to test
-- Any risks or migration steps
-- Checklist: tests passing, CLAUDE.md rules followed, no secrets committed
-- Safe logging implemented? (yes/no — credentials redacted from logs?)
-- Input validation implemented? (yes/no — DTO validation + sanitization?)
+## 8. Configuration
 
-## Adding a New Connector
-1. Create the connector class in `src/connectors/` implementing the `Connector` interface
-2. Use `ConfigService` for configuration (inject via constructor)
-3. Add health check method `isHealthy(): Promise<boolean>`
-4. **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
-5. Register in `src/connectors/connectors.module.ts` (providers + exports)
-6. Add to `config.example.yaml` with placeholder values
-7. Write unit tests with stubbed HTTP responses (see `connector-error.spec.ts` for error handling pattern)
-8. Update `docs/connectors.md` with available methods and example questions
-9. Escalate to PM — new connectors always require PM review before merging
+- **Environment Variables**: Use environment variables for sensitive configuration.
+- **Config Module**: Use NestJS `ConfigModule` for managing configuration.
+- **Validation**: Validate configuration using Joi or class-validator.
 
-## PR Format
-```
-Title: [ai] short description
+## 9. Security
 
-Body:
-## What changed
-<which connector or feature>
+- **Authentication/Authorization**: Implement robust authentication and authorization.
+- **Input Validation**: Validate all incoming input.
+- **Rate Limiting**: Implement rate limiting to prevent abuse.
+- **CORS**: Configure CORS appropriately.
+- **Helmet**: Use Helmet for setting security-related HTTP headers.
 
-## Example questions now answerable
-- "..."
-- "..."
+## 10. Documentation
 
-## Security review
-- Is this connector truly read-only? (yes/no — explain)
-- What data can Claude now see? (be explicit)
-- Health check implemented? (yes/no)
-- Graceful degradation implemented? (yes/no — wrapped with withConnectorErrorHandling?)
-- Safe logging implemented? (yes/no — credentials redacted from logs?)
-- Input validation implemented? (yes/no — DTO validation + sanitization?)
-
-```
-## Testing
-- Unit tests added? (yes/no)
-- Error handling tests included? (yes/no)
-- Log sanitization verified? (yes/no)
-```
+- **README.md**: High-level project overview.
+- **API Documentation**: Use Swagger/OpenAPI for API documentation.
+- **Code Comments**: Use JSDoc for code comments.
+- **Architecture Decision Records (ADRs)**: Document significant architectural decisions.
