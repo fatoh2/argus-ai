@@ -1,6 +1,6 @@
 # Argus AI
 
-Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Google's Gemini API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
+Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Google's Gemini 1.5 Flash API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
 ## Features
 
@@ -92,30 +92,81 @@ Key environment variables:
 | `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
 | `LLM_MAX_PROMPT_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
-| `KUBECONFIG_PATH` | Path to kubeconfig (omit for in-cluster) | No | In-cluster config |
-| `PROMETHEUS_URL` | Prometheus endpoint | No | `http://localhost:9090` |
-| `LOKI_URL` | Loki endpoint | No | `http://localhost:3100` |
-| `ARGOCD_URL` | ArgoCD endpoint | No | `https://localhost:8080` |
+| `KUBECONFIG_PATH` | Path to kubeconfig file | No | In-cluster config |
+| `PROMETHEUS_URL` | Prometheus URL | No | `http://localhost:9090` |
+| `LOKI_URL` | Loki URL | No | `http://localhost:3100` |
+| `ARGOCD_URL` | ArgoCD URL | No | `https://localhost:8080` |
 | `ARGOCD_AUTH_TOKEN` | ArgoCD auth token | No | — |
 | `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No | — |
-| `ARGUS_MONITOR_DB_URL` | Argus Monitor read-only DB URL | No | — |
+| `ARGUS_MONITOR_DB_URL` | Argus Monitor DB connection string | No | — |
 
-See [Configuration Reference](docs/configuration.md) for full details.
+## Architecture
 
-## API Endpoints
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  User/Client │────▶│  Chat API    │────▶│  LlmService     │
+│  (curl, UI)  │     │  POST /chat  │     │  (Gemini 1.5    │
+└─────────────┘     └──────────────┘     │   Flash)        │
+                                         └────────┬────────┘
+                                                  │
+                    ┌─────────────────────────────┼─────────────────────────┐
+                    │                             │                         │
+                    ▼                             ▼                         ▼
+          ┌─────────────────┐          ┌──────────────────┐      ┌──────────────────┐
+          │  K8s Connector   │          │  Prometheus       │      │  Loki Connector   │
+          │  (read-only)     │          │  Connector        │      │  (read-only)      │
+          └─────────────────┘          │  (read-only)      │      └──────────────────┘
+                                        └──────────────────┘
+```
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/chat` | Send a natural language query (rate-limited: 20 req/min/IP) |
-| `POST` | `/llm/run-tool-use-loop` | Direct LLM tool-use loop access |
-| `GET` | `/health/llm` | LLM health check — returns `{ ok: boolean, latencyMs: number }` |
+## API
 
-## Security Best Practices
+### `POST /chat`
 
-- **User Queries**: All user messages are sanitized (control characters stripped), validated (max 4000 chars), and rejected if empty after sanitization.
-- **Connector Credentials**: All connectors use environment variables for sensitive fields. Never commit `config.yaml` or `.env` files with actual credentials.
-- **LLM Logging**: The LLM service never logs full prompt or response content. All log output is sanitized via `sanitizeForLog()` which redacts API keys, tokens, URLs, and JSON secret fields.
-- **Read-Only Access**: All connectors are strictly read-only. Ensure credentials are scoped to the minimum necessary permissions.
+Send a natural language query about your infrastructure.
+
+**Request:**
+```json
+{
+  "message": "What is the status of my web-app deployment?"
+}
+```
+
+**Response:**
+```json
+{
+  "response": "The web-app deployment in the production namespace has 3/3 pods running. All pods are healthy with no recent restarts."
+}
+```
+
+**Rate Limiting**: 20 requests per minute per IP. Exceeding this returns `429 Too Many Requests` with a `Retry-After` header.
+
+**Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
+
+### `GET /health/llm`
+
+Check if the LLM service is responsive.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "latencyMs": 1234
+}
+```
+
+## Development
+
+See [Development Guide](docs/development.md) for setup instructions, project structure, and contribution guidelines.
+
+## Configuration Reference
+
+- [Configuration Guide](docs/configuration.md) — environment variables and config.yaml
+- [Connector Setup](docs/connectors.md) — per-connector configuration details
+
+## Security
+
+See [Security Guide](docs/security.md) for security best practices, input validation, and safe logging.
 
 ## License
 

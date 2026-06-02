@@ -4,69 +4,39 @@ import { GoogleGenerativeAI, ToolDeclaration } from '@google/generative-ai';
 @Injectable()
 export class GeminiService {
   private genAI: GoogleGenerativeAI;
-  private model;
+  private model: any;
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
-      throw new Error('GEMINI_API_KEY not set');
+      throw new Error('GEMINI_API_KEY is not set');
     }
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.model = this.genAI.getGenerativeModel({
-      model: 'gemini-pro',
+      model: 'gemini-1.5-flash',
       systemInstruction: {
-        parts: [
-          {
-            text:
-              'You are an AI assistant for Argus. Your primary role is to help with infrastructure operations. \nRespond concisely and only with the information requested. \nIf you need to use a tool, describe the tool call in the required format. \nDo not invent tools or parameters. \nIf a tool execution fails, inform the user and do not attempt to use it again. \nIf you cannot fulfill the request with the available tools, state that clearly.'
-          },
-        ],
+        parts: [{
+          text: 'You are Argus, an AI assistant for infrastructure operations. ' +
+                'Be concise. Answer only what is asked. ' +
+                'If a tool fails, inform the user and do not retry it. ' +
+                'If you cannot fulfil a request with available tools, say so clearly.',
+        }],
       },
     });
   }
 
-  async runToolUseLoop(prompt: string, tools: ToolDeclaration[]): Promise<any> {
+  async runToolUseLoop(prompt: string, tools: ToolDeclaration[]): Promise<string> {
     const result = await this.model.generateContent({
-      contents: [{ parts: [{ text: prompt }] }],
-      tools: { functionDeclarations: tools },
+      contents: [{ role: 'user', parts: [{ text: prompt }] }],
+      tools: tools.length > 0 ? [{ functionDeclarations: tools }] : undefined,
     });
 
     const response = result.response;
-    const toolCalls = response.candidates?.[0]?.content?.parts?.[0]?.functionCall;
+    const text = response.candidates?.[0]?.content?.parts
+      ?.filter((p: any) => p.text)
+      ?.map((p: any) => p.text)
+      ?.join('') ?? '';
 
-    if (toolCalls) {
-      const toolName = toolCalls.name;
-      const toolArgs = JSON.parse(toolCalls.args);
-
-      // Find the tool function to execute
-      const toolToExecute = tools.find(tool => tool.name === toolName);
-      if (!toolToExecute) {
-        throw new Error('Tool not found: ' + toolName);
-      }
-
-      // Execute the tool (this is a placeholder and needs to be implemented based on the actual tool)
-      let toolResult;
-      try {
-        // In a real scenario, you would dynamically call the appropriate function based on toolName
-        // For this example, we'll simulate a successful execution
-        console.log('Executing tool:', toolArgs);
-        // Placeholder for actual tool execution logic
-        toolResult = { success: true, data: {} };
-      } catch (error) {
-        console.error('Tool execution failed:', error);
-        throw new Error('Tool execution failed: ' + (error as Error).message);
-      }
-
-      // Feed the result back to the model
-      const finalResult = await this.model.generateContent({
-        contents: [
-          { parts: [{ text: prompt }] },
-          { parts: [{ functionResponse: { name: toolName, response: toolResult } }] },
-        ],
-      });
-      return finalResult.response.candidates?.[0]?.content?.parts?.[0]?.text;
-    }
-
-    return response.candidates?.[0]?.content?.parts?.[0]?.text;
+    return text || 'I was unable to generate a response.';
   }
 }
