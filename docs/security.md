@@ -27,6 +27,7 @@ This document outlines the security considerations and best practices for deploy
 - Stray nested clones can be safely deleted with `rm -rf argus-ai/`.
 
 ### `config.example.yaml` Placeholders
+- **Docker Compose Dev Stack**: The `docker-compose.dev.yml` file uses anonymous admin access for Grafana (`GF_AUTH_ANONYMOUS_ENABLED=true`, `GF_AUTH_ANONYMOUS_ORG_ROLE=Admin`) for development convenience. This is acceptable only on a trusted local machine and should never be deployed to production. Ensure that any production deployments of Grafana have proper authentication and authorization configured.
 - The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
 
 ### Docker Compose Dev Environment Security
