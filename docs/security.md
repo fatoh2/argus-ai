@@ -21,8 +21,13 @@ This document outlines the security considerations and best practices for deploy
 - All API keys, tokens, and connection strings provided via `config.yaml` or environment variables are validated for basic presence and structural integrity.
 - Malformed or missing critical credentials will result in application startup failures, preventing insecure operation.
 
+### Nested Clone Prevention
+- The `.gitignore` includes `argus-ai/` to prevent automation agents from accidentally cloning the repository inside itself.
+- This is a defense-in-depth measure: if an agent's working directory is inside the repo and it runs `git clone` targeting the same repo, the clone is ignored by Git and will not be tracked or committed.
+- Stray nested clones can be safely deleted with `rm -rf argus-ai/`.
+
 ### `config.example.yaml` Placeholders
-- The `config.example.yaml` file uses environment variable references (e.g., `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
+- The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
 
 ## 2. User Query Security (Prompt Injection Prevention)
 
@@ -42,7 +47,7 @@ The `/chat` endpoint implements multiple layers of input validation:
 4. **Empty Message Rejection**: After sanitization, empty messages are rejected with a `400 Bad Request`.
 
 ### LLM Guardrails
-- In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses.
+- In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses. The DeepSeek V3 system prompt instructs the model to never reveal API keys, tokens, or sensitive configuration.
 
 ## 3. Connector Interaction Security
 

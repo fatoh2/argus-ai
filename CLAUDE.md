@@ -13,6 +13,11 @@ and optionally argus-monitor's database.
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
 - **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
 
+## Standing Rules
+
+### Never clone this repo inside itself
+The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If you are an agent operating inside this repo, do NOT run `git clone` targeting this same repository — it creates a nested copy that wastes disk space and confuses tooling. If you find an `argus-ai/` directory inside the repo, it is a stray artifact and should be deleted.
+
 ## Repo Structure
 ```
 src/
