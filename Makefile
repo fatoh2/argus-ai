@@ -1,4 +1,4 @@
-.PHONY: up down check test chat health logs
+.PHONY: up down check test chat health logs help
 
 # ──────────────────────────────────────────────
 # argus-ai — Developer Makefile
