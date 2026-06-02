@@ -8,9 +8,6 @@ This guide provides instructions for setting up your development environment, ru
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
-
-> **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones by automation agents. If you see this directory, it is a stray artifact and can be safely deleted.
-
     ```
 
     > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones by automation agents. If you see this directory, it is a stray artifact and can be safely deleted.
@@ -122,7 +119,7 @@ src/
     kubernetes.connector.ts
     loki.connector.ts     # Loki log querying (LogQL)
     argocd.connector.ts   # ArgoCD application status
-  llm/                    # LLM integration (Gemini API)
+  llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
     llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService and LlmController
 
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, 50k token guard, health check, error mapping

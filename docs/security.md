@@ -37,11 +37,6 @@ This document outlines the security considerations and best practices for deploy
 
 ## 2. User Query Security (Prompt Injection Prevention)
 
-### Nested Clone Prevention
-- The `.gitignore` includes `argus-ai/` to prevent automation agents from accidentally cloning the repository inside itself.
-- This is a defense-in-depth measure: if an agent's working directory is inside the repo and it runs `git clone` targeting the same repo, the clone is ignored by Git and will not be tracked or committed.
-- Stray nested clones can be safely deleted with `rm -rf argus-ai/`.
-
 ### Robust Input Sanitization
 - **All natural language queries submitted by users are subject to rigorous sanitization and validation** before being processed by the Large Language Model (LLM) or used to construct API calls to external connectors.
 - This process aims to prevent various injection attacks, including:
