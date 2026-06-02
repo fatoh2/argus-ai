@@ -31,6 +31,8 @@ This guide provides instructions for setting up your development environment, ru
     npm run start:dev
     ```
     The backend will typically run on `http://localhost:3000`.
+    > **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. During development, you can test this by sending 21 requests within 60 seconds — the 21st should return `429 Too Many Requests` with a `Retry-After` header. Rate limit hits are logged with a hashed IP and timestamp.
+
 
 ## Project Structure
 

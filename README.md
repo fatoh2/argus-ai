@@ -9,6 +9,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
+- **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP to prevent abuse.
 
 ## Demo
 
@@ -62,8 +63,10 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```bash
     curl -X POST http://localhost:3000/chat \
     -H "Content-Type: application/json" \
-    -d '{"query": "What is the status of my web-app deployment?"}'
+    -d '{"message": "What is the status of my web-app deployment?"}'
     ```
+
+    **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
 
     Refer to [Example Queries](docs/examples.md) for more example queries.
 
@@ -92,6 +95,8 @@ See [Configuration Reference](docs/configuration.md) for full details.
 ## Security Best Practices
 
 - **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
+- **Input Validation**: The `/chat` endpoint validates message length (max 4000 characters) and strips control characters. Empty messages are rejected with a `400 Bad Request`.
+- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
 - **Read-Only Access**: Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor). Ensure that the credentials provided are scoped to the minimum necessary read-only permissions.
 - **Secure Credential Management**: Use environment variables or a secure secret management system (e.g., Kubernetes Secrets, CI/CD secret management) for all sensitive information. Never hardcode API keys or tokens in configuration files.
 - **Data Volume Management**: Argus AI employs strategies to manage potentially large data volumes, such as capping Loki log queries at 500 lines and Prometheus queries to 24-hour ranges.
