@@ -12,6 +12,8 @@ This guide provides instructions for setting up your development environment, ru
 > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones by automation agents. If you see this directory, it is a stray artifact and can be safely deleted.
     ```
 
+> **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones by automation agents. If you see this directory, it is a stray artifact and can be safely deleted.
+
 2.  **Install dependencies**:
     ```bash
     npm install
