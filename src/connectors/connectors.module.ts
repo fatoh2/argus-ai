@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
+import { KubernetesConnector } from './kubernetes.connector';
+import { PrometheusConnector } from './prometheus.connector';
 import { K8sPrometheusConnector } from './k8s-prometheus.connector';
 import { LokiConnector } from './loki.connector';
 import { ArgoCDConnector } from './argocd.connector';
 
 @Module({
-  providers: [K8sPrometheusConnector, LokiConnector, ArgoCDConnector],
+  providers: [KubernetesConnector, PrometheusConnector, K8sPrometheusConnector, LokiConnector, ArgoCDConnector],
   exports: [K8sPrometheusConnector, LokiConnector, ArgoCDConnector],
 })
 export class ConnectorsModule {}
