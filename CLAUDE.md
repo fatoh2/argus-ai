@@ -66,9 +66,10 @@ import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connec
 @Injectable()
 export class MyConnector {
   async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
-    return withConnectorErrorHandling('my-connector', async () => {
+    return withConnectorErrorHandling('my-connector', async (signal) => {
       // Actual connector logic
-      return await this.api.fetchData();
+      // Pass signal to HTTP requests for proper cancellation on timeout
+      return await this.api.fetchData({ signal });
     });
   }
 
@@ -84,9 +85,21 @@ export class MyConnector {
 ```
 
 The utility provides:
-- **10-second timeout** (configurable via third parameter)
+- **10-second timeout with AbortController** (configurable via third parameter) — cancels the underlying HTTP request on timeout
 - **Structured error responses**: `{ error: "<name> unavailable", data: null }`
 - **Safe logging**: connector name, error type, duration — API keys/tokens auto-redacted via `sanitizeLog()`
+
+### AbortSignal Parameter
+
+The factory function receives an `AbortSignal` as its first argument:
+
+```typescript
+fn: (signal: AbortSignal) => Promise<T>
+```
+
+- **HTTP connectors** (ArgoCD, Loki): pass `signal` to `http.get({ signal })` for proper request cancellation
+- **Delegating connectors** (Kubernetes, K8sPrometheus): accept as `_signal` for API consistency
+- **Custom connectors**: if making HTTP requests, pass the signal to enable cancellation
 
 ### The `sanitizeLog()` Utility
 

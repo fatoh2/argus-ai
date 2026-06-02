@@ -61,8 +61,9 @@ The `/chat` endpoint implements multiple layers of input validation:
 
 ### Timeout Protection
 - All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility.
+- The timeout uses **`AbortController`** to cancel the underlying HTTP request — when the timeout fires, `AbortController.abort()` is called, which causes `http.get({ signal })` to abort the request immediately.
 - If a connector hangs or is unreachable, the call is aborted and a structured `ConnectorErrorResult` is returned instead of blocking the request indefinitely.
-- This prevents cascading failures — a slow or dead connector will not hold up the entire query pipeline.
+- This prevents cascading failures and resource leaks — a slow or dead connector will not hold up the entire query pipeline or leave dangling HTTP connections.
 
 ### Sanitized Error Logging
 - Connector error logs include the connector name, error type, and duration, but **never API keys, tokens, or secrets**.
