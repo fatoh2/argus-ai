@@ -1,4 +1,8 @@
 import { Injectable } from '@nestjs/common';
+import {
+  withConnectorErrorHandling,
+  ConnectorErrorResult,
+} from './utils/connector-error';
 
 @Injectable()
 export class KubernetesConnector {
