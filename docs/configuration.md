@@ -29,6 +29,9 @@ Here's a list of environment variables used:
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `GEMINI_API_KEY` | Your API key for the Google Gemini API | **Yes** | — |
+| `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | No | `30000` |
+| `LLM_MAX_PROMPT_TOKENS` | Maximum estimated tokens before oldest history is truncated | No | `50000` |
+| `LLM_MAX_RETRIES` | Number of retry attempts on 5xx LLM server errors | No | `1` |
 | `KUBECONFIG_PATH` | Path to your Kubernetes kubeconfig file | No | In-cluster config |
 | `PROMETHEUS_URL` | URL of your Prometheus instance | No | `http://localhost:9090` |
 | `LOKI_URL` | URL of your Loki instance | No | `http://localhost:3100` |
@@ -36,6 +39,53 @@ Here's a list of environment variables used:
 | `ARGOCD_AUTH_TOKEN` | Authentication token for ArgoCD | No | — |
 | `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No | — |
 | `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
+
+## LLM Configuration
+
+The LLM service (`LlmService`) is configurable via environment variables or the `LLM_SERVICE_OPTIONS` injection token for programmatic configuration.
+
+### LLM Service Options
+
+```typescript
+interface LlmServiceOptions {
+  timeoutMs?: number;       // Default: 30000 (30s)
+  maxPromptTokens?: number; // Default: 50000
+  maxRetries?: number;      // Default: 1
+}
+```
+
+### LLM Error Handling
+
+The LLM service maps errors to appropriate HTTP status codes:
+
+| Condition | HTTP Status | Response Body |
+|---|---|---|
+| Timeout (exceeds `timeoutMs`) | `504 Gateway Timeout` | `{ statusCode: 504, message: "LLM request timed out", error: "Gateway Timeout" }` |
+| Rate limit / quota exceeded | `429 Too Many Requests` | `{ statusCode: 429, message: "LLM rate limit exceeded", error: "Too Many Requests" }` |
+| Auth failure (invalid API key) | `401 Unauthorized` | `{ statusCode: 401, message: "LLM authentication failed", error: "Unauthorized" }` |
+| Server error (all retries exhausted) | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service unavailable after retries", error: "Bad Gateway" }` |
+| Generic LLM error | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service error", error: "Bad Gateway" }` |
+
+### Health Check
+
+The `GET /health/llm` endpoint (in `LlmController`) returns:
+
+```json
+{
+  "ok": true,
+  "latencyMs": 1234
+}
+```
+
+On failure, `ok` is `false` and `latencyMs` reflects the time until the health check timed out (10s internal timeout).
+
+### Token Estimation
+
+Token count is estimated using a simple heuristic: `Math.ceil(text.length / 4)`. This is a rough approximation for English text — not a precise tokenizer.
+
+### Conversation Truncation
+
+When the estimated token count exceeds `maxPromptTokens`, the oldest messages in the conversation history are removed first, keeping the most recent context.
 
 ## Connector Setup
 
@@ -114,11 +164,16 @@ Argus AI is designed to handle various operational challenges gracefully:
 
 - **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
 - **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** (using AbortController to cancel the underlying HTTP request) via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
-- **Safe Logging**: Connector error logs include the connector name, error type, and duration, but **never API keys, tokens, or secrets**. A `sanitizeLog()` utility automatically redacts values matching common credential patterns (bearer tokens, API keys, secrets) from log output.
+- **LLM Error Resilience**:
+  - **30-second hard timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`. Timeout errors are NOT retried.
+  - **Automatic retry** — on 5xx server errors, the call is retried once (configurable via `LLM_MAX_RETRIES`) before returning `502 Bad Gateway`.
+  - **Token limit guard** — prompts exceeding 50k estimated tokens truncate oldest history first.
+  - **Safe logging** — the LLM service never logs full prompt or response content; all log output is sanitized via `sanitizeForLog()`.
 - **Empty/Null/Large Responses**:
-    -   **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
-    -   **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing. Loki queries are capped at 500 lines by default.
+  - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
+  - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
 
 ## See Also
 
-For the YAML-based configuration reference, see [Config File Reference](config.md).
+- [Config File Reference](config.md) — detailed `config.yaml` structure
+- [Development Guide](development.md) — local setup and project structure

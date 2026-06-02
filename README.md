@@ -11,7 +11,9 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
 - **Input Validation & Sanitization**: The `/chat` endpoint validates message length (max 4000 characters), strips control characters and null bytes, and rejects empty messages with a `400 Bad Request`.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
-- **LLM Error Resilience**: LLM calls have a 30-second timeout, automatic retry on 5xx errors, and a 50k-token prompt limit guard. A `GET /health/llm` endpoint provides LLM health monitoring.
+- **Real AI Responses**: The `/chat` endpoint is wired to the LLM service — queries return real AI-generated answers powered by Google Gemini, not stubs. Chat history is preserved across turns for contextual conversations.
+- **LLM Error Resilience**: LLM calls have a 30-second hard timeout (returns `504 Gateway Timeout`), automatic retry on 5xx errors (up to 1 retry), and a 50k-token prompt limit guard that truncates oldest history first. A `GET /health/llm` endpoint provides LLM health monitoring with latency tracking.
+- **LLM Error Classification**: LLM errors are mapped to appropriate HTTP status codes — rate limits return `429 Too Many Requests`, auth failures return `401 Unauthorized`, and server errors return `502 Bad Gateway`.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
 
@@ -70,6 +72,8 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     -d '{"message": "What is the status of my web-app deployment?"}'
     ```
 
+    The response is a real AI-generated answer from Google Gemini, synthesized from your connected infrastructure data.
+
     **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
 
     Refer to [Example Queries](docs/examples.md) for more example queries.
@@ -85,109 +89,37 @@ The `ConfigModule` is registered globally in `app.module.ts` with `isGlobal: tru
 
 Key environment variables:
 
-| Variable | Description | Required |
-|---|---|---|
-| `GEMINI_API_KEY` | Google Gemini API key | Yes |
-| `KUBECONFIG_PATH` | Path to kubeconfig (omit for in-cluster) | No |
-| `PROMETHEUS_URL` | Prometheus endpoint | No (default: `http://localhost:9090`) |
-| `LOKI_URL` | Loki endpoint | No (default: `http://localhost:3100`) |
-| `ARGOCD_URL` | ArgoCD endpoint | No (default: `https://localhost:8080`) |
-| `ARGOCD_AUTH_TOKEN` | ArgoCD auth token | No |
-| `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No |
-| `ARGUS_MONITOR_DB_URL` | Argus Monitor read-only DB URL | No |
+| Variable | Description | Required | Default |
+|---|---|---|---|
+| `GEMINI_API_KEY` | Google Gemini API key | Yes | — |
+| `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
+| `LLM_MAX_PROMPT_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
+| `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
+| `KUBECONFIG_PATH` | Path to kubeconfig (omit for in-cluster) | No | In-cluster config |
+| `PROMETHEUS_URL` | Prometheus endpoint | No | `http://localhost:9090` |
+| `LOKI_URL` | Loki endpoint | No | `http://localhost:3100` |
+| `ARGOCD_URL` | ArgoCD endpoint | No | `https://localhost:8080` |
+| `ARGOCD_AUTH_TOKEN` | ArgoCD auth token | No | — |
+| `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No | — |
+| `ARGUS_MONITOR_DB_URL` | Argus Monitor read-only DB URL | No | — |
 
 See [Configuration Reference](docs/configuration.md) for full details.
 
+## API Endpoints
+
+| Method | Path | Description |
+|---|---|---|
+| `POST` | `/chat` | Send a natural language query (rate-limited: 20 req/min/IP) |
+| `POST` | `/llm/run-tool-use-loop` | Direct LLM tool-use loop access |
+| `GET` | `/health/llm` | LLM health check — returns `{ ok: boolean, latencyMs: number }` |
+
 ## Security Best Practices
 
-- **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks. The `/chat` endpoint strips control characters and null bytes before processing.
-- **Input Validation**: The `/chat` endpoint uses `class-validator` DTOs to enforce message length (max 4000 characters) and type constraints. Empty messages are rejected with a `400 Bad Request`.
-- **Rate Limiting**: The `/chat` endpoint is protected by a rate limit of 20 requests per minute per IP. This prevents abuse and ensures fair usage. Rate-limit hits are logged with a hashed IP for monitoring, without exposing the actual IP address.
-- **Credential Redaction**: All error logs are automatically processed by the `sanitizeLog()` utility to redact sensitive information such as API keys, bearer tokens, and other secrets. This prevents accidental leakage of credentials into log aggregation systems.
-- **Read-Only Connectors**: All connectors are strictly read-only, preventing the AI from performing any destructive or modifying actions on your infrastructure.
-- **No Hardcoded Secrets**: API keys and other sensitive credentials are never hardcoded. They are loaded from environment variables via NestJS `ConfigService`.
-- **No `config.yaml` in Git**: The `config.yaml` file, which may contain sensitive endpoint URLs or default values, is explicitly excluded from Git. Only `config.example.yaml` is committed as a template.
-- **Graceful Degradation**: Connectors are designed to handle timeouts and failures gracefully. If an external service is unreachable, the AI receives a structured error and informs the user, rather than crashing or exposing internal errors.
-- **Limited Data Access**: Connectors are designed to access only the minimum necessary data to fulfill their function. For example, Loki queries are capped at 500 lines, and Prometheus queries are capped at a 24-hour range by default.
-- **No Destructive Commands**: The AI's output is filtered to prevent it from suggesting or executing any destructive shell commands.
-- **Encrypted History**: User query history and log content are never stored in plaintext. They are encrypted at rest to protect user privacy and data security.
-
-## Development
-
-### Prerequisites
-
-- Node.js (v18+)
-- npm
-- Docker (for local database/service setup if needed)
-
-### Local Setup
-
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/fatoh2/argus-ai.git
-    cd argus-ai
-    ```
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
-3.  **Create `config.yaml`**:
-    ```bash
-    cp config.example.yaml config.yaml
-    ```
-    Edit `config.yaml` to point to your local services (e.g., Prometheus, Loki, Kubernetes).
-4.  **Set environment variables**:
-    Create a `.env` file in the root directory or set environment variables directly in your shell.
-    ```
-    GEMINI_API_KEY=YOUR_GEMINI_API_KEY
-    # KUBECONFIG_PATH=/path/to/your/kubeconfig # Uncomment if not running in-cluster
-    # PROMETHEUS_URL=http://localhost:9090
-    # LOKI_URL=http://localhost:3100
-    # ARGOCD_URL=https://localhost:8080
-    # ARGOCD_AUTH_TOKEN=your_argocd_token
-    # GITHUB_TOKEN=your_github_pat
-    # ARGUS_MONITOR_DB_URL=postgresql://user:password@host:port/database
-    ```
-5.  **Run in development mode**:
-    ```bash
-    npm run start:dev
-    ```
-
-### Testing
-
-- **Unit tests**: `npm run test`
-- **End-to-end tests**: `npm run test:e2e`
-- **Test coverage**: `npm run test:cov`
-
-### Linting and Formatting
-
-- **Lint**: `npm run lint`
-- **Format**: `npm run format`
-
-## Deployment
-
-Argus AI is designed to be deployed as a Docker container or directly on a Node.js environment.
-
-### Docker
-
-1.  **Build the Docker image**:
-    ```bash
-    docker build -t argus-ai .
-    ```
-2.  **Run the Docker container**:
-    ```bash
-    docker run -d -p 3000:3000 --env-file .env argus-ai
-    ```
-    Ensure your `.env` file contains all necessary environment variables (e.g., `GEMINI_API_KEY`, connector URLs).
-
-### Kubernetes
-
-Refer to the `argus-infra` repository for Kubernetes deployment manifests and Helm charts.
-
-## Contributing
-
-We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+- **User Queries**: All user messages are sanitized (control characters stripped), validated (max 4000 chars), and rejected if empty after sanitization.
+- **Connector Credentials**: All connectors use environment variables for sensitive fields. Never commit `config.yaml` or `.env` files with actual credentials.
+- **LLM Logging**: The LLM service never logs full prompt or response content. All log output is sanitized via `sanitizeForLog()` which redacts API keys, tokens, URLs, and JSON secret fields.
+- **Read-Only Access**: All connectors are strictly read-only. Ensure credentials are scoped to the minimum necessary permissions.
 
 ## License
 
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
+MIT

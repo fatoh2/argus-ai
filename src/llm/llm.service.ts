@@ -192,70 +192,45 @@ export class LlmService {
 
       return result;
     } catch (error: any) {
-      if (error instanceof HttpException && error.getStatus() === HttpStatus.GATEWAY_TIMEOUT) {
+      if (error instanceof HttpException) {
         throw error;
       }
-      throw this.mapErrorToHttpException(error);
+      // Map abort/timeout errors to 504
+      if (
+        error.name === 'AbortError' ||
+        error.message?.includes('abort') ||
+        error.message?.includes('timeout') ||
+        error.message?.includes('timed out')
+      ) {
+        this.logger.warn(`LLM call timed out after ${this.timeoutMs}ms`);
+        throw new HttpException(
+          {
+            statusCode: HttpStatus.GATEWAY_TIMEOUT,
+            message: 'LLM request timed out',
+            error: 'Gateway Timeout',
+          },
+          HttpStatus.GATEWAY_TIMEOUT,
+        );
+      }
+      throw error;
     }
   }
 
   /**
-   * Creates a promise that rejects with a 504 Gateway Timeout after this.timeoutMs.
+   * A promise that rejects after timeoutMs with a timeout error.
    */
-  private createTimeoutPromise(): Promise<any> {
-    return new Promise((_resolve, reject) => {
+  private createTimeoutPromise(): Promise<never> {
+    return new Promise((_, reject) => {
       setTimeout(() => {
-        reject(
-          new HttpException(
-            'LLM request timed out',
-            HttpStatus.GATEWAY_TIMEOUT,
-          ),
-        );
+        reject(new Error('LLM request timed out'));
       }, this.timeoutMs);
     });
   }
 
   /**
-   * Performs a cheap LLM health check.
-   * Returns { ok: true, latencyMs: N } on success, or throws an error on failure.
-   */
-  async checkHealth(): Promise<{ ok: boolean; latencyMs: number }> {
-    const startTime = process.hrtime.bigint();
-    try {
-      // Use a very simple prompt that doesn't require tool use
-      await this.executeWithTimeout('Hello', []);
-      const endTime = process.hrtime.bigint();
-      const latencyMs = Number(endTime - startTime) / 1_000_000;
-      return { ok: true, latencyMs: parseFloat(latencyMs.toFixed(2)) };
-    } catch (error) {
-      const endTime = process.hrtime.bigint();
-      const latencyMs = Number(endTime - startTime) / 1_000_000;
-      this.logger.error(`Health check failed: ${sanitizeForLog(error.message || 'Unknown error')}`);
-      return { ok: false, latencyMs: parseFloat(latencyMs.toFixed(2)) };
-    }
-  }
-
-  /**
-   * Maps various errors to appropriate HTTP exceptions.
+   * Map various error types to appropriate HTTP exceptions.
    */
   private mapErrorToHttpException(error: any): HttpException {
-    if (error instanceof HttpException) {
-      return error;
-    }
-    if (error.name === 'GoogleGenerativeAIResponseError') {
-      // Specific handling for Gemini API errors
-      this.logger.error(
-        `Gemini API error: status=${error.response.status} message=${sanitizeForLog(error.message)}`,
-      );
-      return new HttpException(
-        {
-          statusCode: error.response.status,
-          message: `LLM service error: ${error.message}`,
-          error: 'Bad Gateway',
-        },
-        HttpStatus.BAD_GATEWAY,
-      );
-    }
     // Rate limiting / quota errors
     if (
       error.message?.includes('429') ||
@@ -272,12 +247,55 @@ export class LlmService {
       );
     }
 
-    this.logger.error(
-      `Unexpected LLM service error: ${sanitizeForLog(error.message || 'Unknown error')}`,
-    );
+    // Auth errors
+    if (
+      error.message?.includes('401') ||
+      error.message?.includes('unauthorized') ||
+      error.message?.includes('API key')
+    ) {
+      return new HttpException(
+        {
+          statusCode: HttpStatus.UNAUTHORIZED,
+          message: 'LLM authentication failed',
+          error: 'Unauthorized',
+        },
+        HttpStatus.UNAUTHORIZED,
+      );
+    }
+
+    // Default to 502 Bad Gateway for LLM errors
     return new HttpException(
-      'Internal LLM service error',
-      HttpStatus.INTERNAL_SERVER_ERROR,
+      {
+        statusCode: HttpStatus.BAD_GATEWAY,
+        message: 'LLM service error',
+        error: 'Bad Gateway',
+      },
+      HttpStatus.BAD_GATEWAY,
     );
+  }
+
+  /**
+   * Make a cheap health-check call to the LLM API.
+   * Returns { ok: boolean, latencyMs: number }.
+   */
+  async checkHealth(): Promise<{ ok: boolean; latencyMs: number }> {
+    const start = Date.now();
+    try {
+      // Use a minimal prompt for health check
+      await Promise.race([
+        this.geminiService.runToolUseLoop('Respond with just: ok', []),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error('Health check timed out')), 10_000),
+        ),
+      ]);
+      const latencyMs = Date.now() - start;
+      return { ok: true, latencyMs };
+    } catch (error: any) {
+      const latencyMs = Date.now() - start;
+      this.logger.warn(
+        `LLM health check failed: ${sanitizeForLog(error.message || 'Unknown error')}`,
+      );
+      return { ok: false, latencyMs };
+    }
   }
 }

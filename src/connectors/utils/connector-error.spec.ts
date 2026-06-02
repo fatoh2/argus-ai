@@ -10,12 +10,12 @@ describe('withConnectorErrorHandling', () => {
   });
 
   it('returns the result when the connector succeeds', async () => {
-    const result = await withConnectorErrorHandling('test', async (_signal) => 'hello');
+    const result = await withConnectorErrorHandling('test', async () => 'hello');
     expect(result).toBe('hello');
   });
 
   it('returns a structured error when the connector throws', async () => {
-    const result = await withConnectorErrorHandling('test', async (_signal) => {
+    const result = await withConnectorErrorHandling('test', async () => {
       throw new Error('k8s connection refused');
     });
 
@@ -28,7 +28,7 @@ describe('withConnectorErrorHandling', () => {
   it('returns a structured error on timeout', async () => {
     const result = await withConnectorErrorHandling(
       'test',
-      async (_signal) => {
+      async () => {
         await new Promise((resolve) => setTimeout(resolve, 500));
         return 'too late';
       },
@@ -44,7 +44,7 @@ describe('withConnectorErrorHandling', () => {
   it('logs connector name, error type, and duration on failure', async () => {
     const consoleSpy = jest.spyOn(console, 'error');
 
-    await withConnectorErrorHandling('my-connector', async (_signal) => {
+    await withConnectorErrorHandling('my-connector', async () => {
       throw new Error('something broke');
     });
 
@@ -59,7 +59,7 @@ describe('withConnectorErrorHandling', () => {
   it('never logs API keys or tokens in error messages', async () => {
     const consoleSpy = jest.spyOn(console, 'error');
 
-    await withConnectorErrorHandling('test', async (_signal) => {
+    await withConnectorErrorHandling('test', async () => {
       throw new Error('Bearer sk-1234567890abcdef1234567890abcdef');
     });
 
@@ -69,7 +69,7 @@ describe('withConnectorErrorHandling', () => {
   });
 
   it('returns data: null with the correct type for array results', async () => {
-    const result = await withConnectorErrorHandling('test', async (_signal): Promise<any[]> => {
+    const result = await withConnectorErrorHandling('test', async (): Promise<any[]> => {
       throw new Error('fail');
     });
 
@@ -77,22 +77,5 @@ describe('withConnectorErrorHandling', () => {
       error: 'test unavailable',
       data: null,
     });
-  });
-
-  it('passes an AbortSignal that aborts after timeout', async () => {
-    let capturedSignal: AbortSignal | undefined;
-
-    await withConnectorErrorHandling(
-      'test',
-      async (signal) => {
-        capturedSignal = signal;
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        return 'too late';
-      },
-      50,
-    );
-
-    expect(capturedSignal).toBeDefined();
-    expect(capturedSignal!.aborted).toBe(true);
   });
 });

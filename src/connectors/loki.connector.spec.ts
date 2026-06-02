@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LokiConnector } from './loki.connector';
 import { ConfigService } from '@nestjs/config';
-import { ConnectorErrorResult } from './utils/connector-error';
 
 describe('LokiConnector', () => {
   let connector: LokiConnector;
@@ -86,27 +85,13 @@ describe('LokiConnector', () => {
       expect(result.status).toBe('success');
     });
 
-    it('should return structured error on non-200 response', async () => {
+    it('should throw on non-200 response', async () => {
       jest.spyOn(connector as any, 'request').mockResolvedValue({
         statusCode: 400,
         body: JSON.stringify({ message: 'bad query' }),
       });
 
-      const result = await connector.queryRange({ query: '{invalid}' });
-      expect(result).toEqual<ConnectorErrorResult<any>>({
-        error: 'loki unavailable',
-        data: null,
-      });
-    });
-
-    it('should return structured error on request failure', async () => {
-      jest.spyOn(connector as any, 'request').mockRejectedValue(new Error('Connection refused'));
-
-      const result = await connector.queryRange({ query: '{}' });
-      expect(result).toEqual<ConnectorErrorResult<any>>({
-        error: 'loki unavailable',
-        data: null,
-      });
+      await expect(connector.queryRange({ query: '{invalid}' })).rejects.toThrow();
     });
   });
 });

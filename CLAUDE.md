@@ -1,71 +1,64 @@
 # CLAUDE.md
 
-This document outlines the coding standards and architectural principles for the Argus AI project, specifically tailored for development with Claude as an AI assistant.
+## Role
+You build and maintain Argus AI: an AI infrastructure assistant powered by Google Gemini
+API tool use, with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD, and
+optionally argus-monitor's database.
 
-## 1. Architecture Principles
+## Stack
+- **AI**: Google Gemini API (generative-ai SDK)
+- **Backend**: NestJS + TypeScript
+- **Frontend**: React embeddable chat component
+- **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
+- **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
+- **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
+- **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
 
-- **Modularity**: Components should be loosely coupled and highly cohesive.
-- **Scalability**: Design for horizontal scaling where possible.
-- **Resilience**: Implement graceful degradation and error handling.
-- **Security**: Prioritize security at every layer.
-- **Observability**: Ensure systems are easily monitorable and debuggable.
-- **API-First**: Design APIs before implementation.
-- **Idempotency**: Operations should produce the same result if executed multiple times.
+## Repo Structure
+```
+src/
+  app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
+  app.controller.ts       # Health check endpoint
+  app.service.ts          # Core application service
+  main.ts                 # Bootstrap — global ValidationPipe with whitelist
+  chat/                   # Chat API module (REST endpoint)
+    chat.controller.ts    # POST /chat — input sanitization (strips control chars)
+    chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
+    chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
+    dto/
+      chat.dto.ts         # ChatDto — IsString, MaxLength(4000)
+  connectors/
+    connectors.module.ts  # Registers and exports all connectors
+    utils/
+      connector-error.ts  # Graceful degradation utility (timeout + AbortController + structured errors + log sanitization)
+      connector-error.spec.ts  # Tests for error handling utility
+    k8s-prometheus.connector.ts
+    kubernetes.connector.ts
+    loki.connector.ts     # LogQL query wrapper
+    argocd.connector.ts   # ArgoCD API client
+  llm/                    # Gemini LLM integration
+    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
+    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
+    llm.service.spec.ts   # Tests for LlmService
+    llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
+    llm.controller.spec.ts# Tests for LlmController
+    gemini/               # Google Gemini API client
+config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
+```
 
-## 2. Code Structure
+## Connector Architecture
 
-### NestJS Application Structure
+All connectors:
+- Are `@Injectable()` classes in `src/connectors/`
+- Use `ConfigService` for configuration (injected via constructor)
+- Implement `isHealthy(): Promise<boolean>` for health checks
+- Are registered in `ConnectorsModule` (providers + exports)
+- Are strictly read-only
+- **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
 
-- **`src/main.ts`**: Application entry point.
-- **`src/app.module.ts`**: Root module.
-- **`src/modules/`**: Contains feature modules (e.g., `chat`, `connectors`, `auth`).
-  - Each module should have its own `*.module.ts`, `*.controller.ts`, `*.service.ts`, `*.resolver.ts` (if GraphQL), and `*.spec.ts` files.
-- **`src/common/`**: Shared utilities, decorators, interceptors, pipes, filters.
-- **`src/config/`**: Configuration management (e.g., `config.service.ts`, `configuration.ts`).
-- **`src/database/`**: Database-related code (e.g., TypeORM entities, migrations).
-- **`src/interfaces/`**: TypeScript interfaces and types.
-- **`src/connectors/`**: External service integrations (e.g., Kubernetes, ArgoCD, Prometheus).
+### Graceful Degradation Pattern
 
-### File Naming Conventions
-
-- `feature-name.module.ts`
-- `feature-name.controller.ts`
-- `feature-name.service.ts`
-- `feature-name.resolver.ts`
-- `feature-name.guard.ts`
-- `feature-name.interceptor.ts`
-- `feature-name.pipe.ts`
-- `feature-name.filter.ts`
-- `feature-name.entity.ts`
-- `feature-name.interface.ts`
-- `feature-name.dto.ts`
-- `feature-name.spec.ts` (for tests)
-
-## 3. TypeScript Best Practices
-
-- **Strict Typing**: Always use strict TypeScript.
-- **Interfaces over Types**: Prefer interfaces for object shapes.
-- **Readonly Properties**: Use `readonly` for properties that should not be reassigned.
-- **Enums**: Use `enum` for a set of named constants.
-- **Async/Await**: Prefer `async/await` for asynchronous operations.
-- **Error Handling**: Use `try/catch` blocks for error handling.
-- **Type Guards**: Use type guards for narrowing types.
-
-## 4. API Design (GraphQL & REST)
-
-- **Consistency**: Maintain consistent naming conventions and data structures.
-- **Versioning**: Use API versioning (e.g., `/v1/`).
-- **Pagination**: Implement pagination for large collections.
-- **Filtering/Sorting**: Provide options for filtering and sorting.
-- **Error Responses**: Standardize error response formats.
-
-## 5. Connectors
-
-Connectors are responsible for integrating with external systems (Kubernetes, ArgoCD, Prometheus, etc.).
-
-### `withConnectorErrorHandling()` Utility
-
-All connector methods that interact with external services **must** be wrapped with `withConnectorErrorHandling()` to ensure graceful degradation and consistent error responses.
+Every connector method must use `withConnectorErrorHandling`:
 
 ```typescript
 import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
@@ -80,11 +73,13 @@ export class MyConnector {
     });
   }
 
-  async getOtherData(): Promise<OtherData | ConnectorErrorResult<OtherData>> {
-    return withConnectorErrorHandling('my-connector', async () => {
-      // Logic that doesn't involve HTTP requests or needs a signal
-      return { value: 'some-data' };
-    }, 5000); // Custom 5-second timeout
+  async isHealthy(): Promise<boolean> {
+    try {
+      const result = await this.getData();
+      return !(result && typeof result === 'object' && 'error' in result);
+    } catch {
+      return false;
+    }
   }
 }
 ```
@@ -109,45 +104,132 @@ fn: (signal: AbortSignal) => Promise<T>
 ### The `sanitizeLog()` Utility
 
 ```typescript
-import { sanitizeLog } from './utils/sanitize-log';
-
-const sensitiveData = 'Bearer my-secret-token-123';
-const sanitized = sanitizeLog(sensitiveData); // 'Bearer [REDACTED]'
+function sanitizeLog(message: string): string {
+  return message.replace(
+    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
+    '$1***redacted***$1',
+  );
+}
 ```
 
-This utility automatically redacts sensitive information (API keys, bearer tokens, etc.) from log messages to prevent accidental exposure.
+### Example: Adding a connector to ConnectorsModule
 
-## 6. Testing
+```typescript
+// src/connectors/connectors.module.ts
+import { Module } from '@nestjs/common';
+import { K8sPrometheusConnector } from './k8s-prometheus.connector';
+import { KubernetesConnector } from './kubernetes.connector';
+import { LokiConnector } from './loki.connector';
+import { ArgoCDConnector } from './argocd.connector';
 
-- **Unit Tests**: Use Jest for unit testing services, controllers, and utilities.
-- **Integration Tests**: Test the interaction between components.
-- **End-to-End Tests**: Use Supertest for testing API endpoints.
-- **Test Coverage**: Aim for high test coverage.
-- **Mocking**: Use mocks for external dependencies.
+@Module({
+  providers: [K8sPrometheusConnector, KubernetesConnector, LokiConnector, ArgoCDConnector],
+  exports: [K8sPrometheusConnector, KubernetesConnector, LokiConnector, ArgoCDConnector],
+})
+export class ConnectorsModule {}
+```
 
-## 7. Logging
+```typescript
+import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
 
-- **Winston**: Use Winston for structured logging.
-- **Log Levels**: Use appropriate log levels (debug, info, warn, error).
-- **Context**: Include relevant context in log messages.
+@Injectable()
+export class MyConnector {
+  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
+    return withConnectorErrorHandling('my-connector', async (signal) => {
+      // Actual connector logic
+      // Pass signal to HTTP requests for proper cancellation on timeout
+      return await this.api.fetchData({ signal });
+    });
+  }
 
-## 8. Configuration
+  async getOtherData(): Promise<OtherData | ConnectorErrorResult<OtherData>> {
+    return withConnectorErrorHandling('my-connector', async () => {
+      // Logic that doesn't involve HTTP requests or needs a signal
+      return { value: 'some-data' };
+    }, 5000); // Custom 5-second timeout
+  }
+}
+```
 
-- **Environment Variables**: Use environment variables for sensitive configuration.
-- **Config Module**: Use NestJS `ConfigModule` for managing configuration.
-- **Validation**: Validate configuration using Joi or class-validator.
-
-## 9. Security
-
-- **Authentication/Authorization**: Implement robust authentication and authorization.
-- **Input Validation**: Validate all incoming input.
-- **Rate Limiting**: Implement rate limiting to prevent abuse.
-- **CORS**: Configure CORS appropriately.
-- **Helmet**: Use Helmet for setting security-related HTTP headers.
-
-## 10. Documentation
-
-- **README.md**: High-level project overview.
-- **API Documentation**: Use Swagger/OpenAPI for API documentation.
-- **Code Comments**: Use JSDoc for code comments.
-- **Architecture Decision Records (ADRs)**: Document significant architectural decisions.
+## Security Rules (strictest in the project)
+- **NEVER** add write operations to any connector — every connector is read-only
+- **NEVER** let Claude suggest destructive shell commands in its output — filter them
+- **NEVER** store user query history or log content in plaintext — encrypt at rest
+- **NEVER** hardcode API keys — use `ConfigService` + environment variables only
+- **NEVER** commit `config.yaml` (contains real endpoint URLs) — only `config.example.yaml`
+- **ALWAYS** add a health check to every connector before using it
+  - If endpoint unreachable: return graceful error, not a crash
+- **ALWAYS** wrap connector methods with `withConnectorErrorHandling()` for graceful degradation
+- **ALWAYS** cap Loki log queries to 500 lines max to avoid context overflow
+- **ALWAYS** cap Prometheus queries to 24h range unless explicitly requested
+- **ALWAYS** use `ConfigService` for all configuration — never `process.env` directly
+- **ALWAYS** use `class-validator` decorators on all DTOs
+- **ALWAYS** add `@IsString()` and `@MaxLength()` to message fields
+- **ALWAYS** add unit tests for new connectors (stub HTTP, mock ConfigService)
+- **ALWAYS** add unit tests for new LLM methods
+- **ALWAYS** add e2e tests for new endpoints
+- **ALWAYS** use `sanitizeLog()` before writing any log that might contain user input or connector responses
+- **ALWAYS** add `@IsOptional()` + `@IsString()` for optional DTO fields
+- **ALWAYS** use `@nestjs/config` `ConfigService.get<T>('path', default)` with a type parameter and default value
+- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService` in connector tests
+- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked `LlmService` in controller tests
+- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked dependencies in service tests
+- **ALWAYS** use `SuperTest` + `@nestjs/testing` for e2e tests
+- **ALWAYS** use `beforeEach` for test setup, not `beforeAll`
+- **ALWAYS** stub HTTP calls in connector tests — never make real network requests
+- **ALWAYS** test the `isHealthy()` method returns `false` when the connector is unreachable
+- **ALWAYS** test the `isHealthy()` method returns `true` when the connector is reachable
+- **ALWAYS** test error handling returns `ConnectorErrorResult` shape on failure
+- **ALWAYS** test log sanitization redacts API keys and tokens
+- **ALWAYS** test timeout behavior returns structured error
+- **ALWAYS** test correct typing for array results from connectors
+- **ALWAYS** use `@nestjs/throttler` `@SkipThrottle()` on health check endpoints
+- **ALWAYS** use `@nestjs/throttler` `@Throttle()` with custom limits where needed
+- **ALWAYS** add `@HttpCode(HttpStatus.OK)` to POST endpoints that don't create resources
+- **ALWAYS** add `@ApiTags()` and `@ApiOperation()` decorators to controllers
+- **ALWAYS** use `@nestjs/swagger` for API documentation
+- **ALWAYS** use `@nestjs/config` `ConfigModule.forRoot({ isGlobal: true })` in `app.module.ts`
+- **ALWAYS** use `@nestjs/common` `Logger` for logging — never `console.log`
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ whitelist: true, forbidNonWhitelisted: true }` globally
+- **ALWAYS** use `@nestjs/common` `HttpException` with appropriate status codes for error responses
+- **ALWAYS** use `@nestjs/common` `NotFoundException`, `BadRequestException`, `GatewayTimeoutException` for specific error cases
+- **ALWAYS** use `@nestjs/bull` `InjectQueue()` for BullMQ queue injection
+- **ALWAYS** use `@nestjs/bull` `Process()` decorator for queue processors
+- **ALWAYS** use `@nestjs/schedule` `@Cron()` for scheduled tasks
+- **ALWAYS** use `@nestjs/axios` `HttpService` for HTTP requests — it integrates with NestJS lifecycle
+- **ALWAYS** use `firstValueFrom()` to convert `HttpService` observables to promises
+- **ALWAYS** pass `AbortSignal` from `withConnectorErrorHandling` to `http.get({ signal })` for proper request cancellation on timeout
+- **ALWAYS** use `@nestjs/config` `ConfigModule.forRoot({ load: [yamlLoader] })` for YAML config loading
+- **ALWAYS** use `js-yaml` `load()` to parse `config.yaml` in a custom config loader
+- **ALWAYS** use `@nestjs/core` `APP_PIPE` for global pipe registration
+- **ALWAYS** use `@nestjs/core` `APP_GUARD` for global guard registration
+- **ALWAYS** use `@nestjs/core` `APP_FILTER` for global exception filter registration
+- **ALWAYS** use `@nestjs/core` `APP_INTERCEPTOR` for global interceptor registration
+- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` for integration tests
+- **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with `compile()` and `init()` for e2e tests
+- **ALWAYS** use `@nestjs/swagger` `SwaggerModule.setup()` for API docs
+- **ALWAYS** use `@nestjs/common` `Logger.log()` for info, `Logger.warn()` for warnings, `Logger.error()` for errors
+- **ALWAYS** use `@nestjs/common` `Logger` with context name: `new Logger('MyService')`
+- **ALWAYS** use `@nestjs/common` `Injectable()` decorator for all services
+- **ALWAYS** use `@nestjs/common` `Controller()` decorator for all controllers
+- **ALWAYS** use `@nestjs/common` `Module()` decorator for all modules
+- **ALWAYS** use `@nestjs/common` `Global()` decorator for global modules
+- **ALWAYS** use `@nestjs/common` `HttpStatus` enum for status codes
+- **ALWAYS** use `@nestjs/common` `ParseUUIDPipe` for UUID validation
+- **ALWAYS** use `@nestjs/common` `DefaultValuePipe` for default values
+- **ALWAYS** use `@nestjs/common` `ParseIntPipe` for integer validation
+- **ALWAYS** use `@nestjs/common` `ParseBoolPipe` for boolean validation
+- **ALWAYS** use `@nestjs/common` `ParseArrayPipe` for array validation
+- **ALWAYS** use `@nestjs/common` `ParseEnumPipe` for enum validation
+- **ALWAYS** use `@nestjs/common` `ParseFloatPipe` for float validation
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ transform: true }` for auto-transformation
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ whitelist: true }` to strip unknown properties
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ forbidNonWhitelisted: true }` to reject unknown properties
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ forbidUnknownValues: true }` to reject unknown values
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ skipMissingProperties: false }` to require all properties
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ skipNullProperties: false }` to reject null values
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ skipUndefinedProperties: false }` to reject undefined values
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ transformOptions: { enableImplicitConversion: true } }` for auto-conversion
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ exceptionFactory: (errors) => new BadRequestException(errors) }` for custom error format
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ validateCustomDecorators: true }` for custom decorators
+- **ALWAYS** use `@nestjs/common` `ValidationPipe` with `{ stopAtFirstError: true }` to stop at first error

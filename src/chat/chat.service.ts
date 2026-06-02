@@ -1,10 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable } from "@nestjs/common";
+import { LlmService } from "../llm/llm.service";
 
 @Injectable()
 export class ChatService {
-  async getAnswer(message: string): Promise<string> {
-    // TODO: Integrate with AI model
-    console.log('Received message:', message);
-    return '';
+  constructor(private readonly llmService: LlmService) {}
+
+  async getAnswer(message: string, history: { role: string; content: string }[] = []): Promise<string> {
+    return this.llmService.runToolUseLoop(message, [], history);
   }
 }

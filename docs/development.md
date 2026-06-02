@@ -43,7 +43,8 @@ src/
   main.ts                 # Bootstrap — global ValidationPipe with whitelist + forbidNonWhitelisted
   chat/                   # Chat API module (REST endpoint)
     chat.controller.ts    # POST /chat — input sanitization (strips control chars) + validation
-    chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
+    chat.service.ts       # Delegates to LlmService.runToolUseLoop() — real AI responses
+    chat.module.ts        # Imports LlmModule + ThrottlerModule (20 req/min) + ChatRateLimitGuard
     chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging + Retry-After header
     dto/
       chat.dto.ts         # ChatDto — message validation (IsString, MaxLength 4000)
@@ -57,10 +58,10 @@ src/
     loki.connector.ts     # Loki log querying (LogQL)
     argocd.connector.ts   # ArgoCD application status
   llm/                    # LLM integration (Gemini API)
-    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService
-    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
+    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService and LlmController
+    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, 50k token guard, health check, error mapping
     llm.service.spec.ts   # Tests for LlmService
-    llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
+    llm.controller.ts     # POST /llm/run-tool-use-loop + GET /health/llm — LLM health check endpoint
     llm.controller.spec.ts# Tests for LlmController
     gemini/               # Google Gemini API client
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
@@ -85,6 +86,53 @@ export class LokiConnector {
   }
 }
 ```
+
+## LLM Service Architecture
+
+The `LlmService` is the core LLM integration layer. It wraps the Gemini API with:
+
+### ChatService Integration
+
+The `ChatService` (in `chat/chat.module.ts`) imports `LlmModule` and injects `LlmService` to provide real AI responses via the `/chat` endpoint. The `getAnswer()` method delegates directly to `llmService.runToolUseLoop()`, passing the user's message, available tools, and conversation history. This means:
+
+- **Every `/chat` request** triggers a real Gemini API call with tool-use capabilities
+- **Conversation history** is passed through for contextual multi-turn conversations
+- **All LLM resilience features** (timeout, retry, token guard, error mapping) apply automatically
+
+### Timeout Protection
+
+Uses `Promise.race` between the Gemini call and a timeout promise. If the call exceeds `timeoutMs` (default 30s), it rejects with `504 Gateway Timeout`. Timeout errors are NOT retried — they fail fast.
+
+### Token Limit Guard
+
+The `truncateConversation()` function estimates token count using `Math.ceil(text.length / 4)` and removes oldest messages first when the total exceeds `maxPromptTokens` (default 50k).
+
+### Retry Logic
+
+On 5xx server errors, the call is retried up to `maxRetries` times (default 1). Non-retryable errors (4xx, auth failures, rate limits) fail immediately.
+
+### Error Classification
+
+The `mapErrorToHttpException()` method maps errors to appropriate HTTP status codes:
+
+| Error Type | HTTP Status |
+|---|---|
+| Timeout | `504 Gateway Timeout` |
+| Rate limit / quota | `429 Too Many Requests` |
+| Auth failure | `401 Unauthorized` |
+| Server error (retries exhausted) | `502 Bad Gateway` |
+| Generic | `502 Bad Gateway` |
+
+### Health Check
+
+`checkHealth()` sends a minimal prompt (`"Respond with just: ok"`) with a 10s internal timeout. Returns `{ ok: boolean, latencyMs: number }`. On failure, `ok` is `false` — the error is caught gracefully and never thrown.
+
+### Safe Logging
+
+The `sanitizeForLog()` utility redacts:
+- Alphanumeric strings 20+ characters (API keys, tokens)
+- URLs containing potential tokens
+- JSON fields named `apiKey`, `token`, `secret`, `password`
 
 ## Graceful Degradation Pattern
 
@@ -148,60 +196,39 @@ function sanitizeLog(message: string): string {
 }
 ```
 
-This ensures that if an error message contains an API key or bearer token, it is replaced with `***redacted***` before being written to the console.
-
-## Adding New Connectors
-
-Follow the detailed steps outlined in [CLAUDE.md](../CLAUDE.md). Key steps include:
-
-1.  Create the connector class in `src/connectors/` implementing the `Connector` interface.
-2.  Add a health check method `isHealthy(): Promise<boolean>`.
-3.  Use `ConfigService` for configuration (inject via constructor).
-4.  **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`.
-5.  Register the connector in `src/connectors/connectors.module.ts` (add to `providers` and `exports`).
-6.  Update `config.example.yaml` with placeholder values.
-7.  Write unit tests with stubbed HTTP responses (see `connector-error.spec.ts` for the error handling pattern).
-8.  Update `docs/connectors.md` with available methods and example questions.
-9.  **Escalate to PM**: New connectors always require PM review before merging due to security implications.
-
 ## Testing
 
-Argus AI uses Jest for testing.
+### Running Tests
 
-- **Unit Tests**: Located alongside the code they test (e.g., `*.spec.ts`). These should use stubbed or mocked dependencies.
-- **Connector Tests**: Use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService`.
-- **Error Handling Tests**: The `connector-error.spec.ts` file tests timeout behavior, success/failure paths, and log sanitization (verifying that API keys are redacted from logs). Tests cover:
-  - Successful connector calls return the expected result
-  - Thrown errors return structured `ConnectorErrorResult`
-  - Timeouts return structured `ConnectorErrorResult`
-  - Logs contain connector name, error type, and duration
-  - API keys and tokens are redacted from log output
-  - Correct typing for array results
-
-To run all tests:
 ```bash
+# Run all tests
 npm test
-```
 
-To run tests in watch mode:
-```bash
+# Run tests with coverage
+npm run test:cov
+
+# Run tests in watch mode
 npm run test:watch
 ```
 
-## Input Validation & Sanitization
+### Writing Tests
 
-The `/chat` endpoint implements multiple layers of input validation:
+- Use Jest with `@nestjs/testing` and mocked `ConfigService`
+- Test files should be co-located with their source files as `*.spec.ts`
+- Mock external dependencies (Gemini API, Kubernetes client, etc.)
+- Test both success and failure paths (timeouts, errors, empty responses)
 
-1. **DTO Validation**: `ChatDto` uses `class-validator` decorators (`@IsString()`, `@MaxLength(4000)`) to validate message structure and length.
-2. **Global ValidationPipe**: `main.ts` registers a global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true`, ensuring only expected fields are accepted.
-3. **Control Character Stripping**: The `ChatController` strips control characters (`\x00-\x08`, `\x0B`, `\x0C`, `\x0E-\x1F`, `\x7F`) and null bytes from messages before processing.
-4. **Empty Message Rejection**: After sanitization, empty messages are rejected with a `400 Bad Request`.
+## Adding a New Connector
 
-## Rate Limiting
+1. Create the connector file in `src/connectors/`
+2. Implement `isHealthy(): Promise<boolean>`
+3. Wrap all public methods with `withConnectorErrorHandling('<name>', ...)`
+4. Register in `ConnectorsModule` (providers + exports)
+5. Add configuration to `config.example.yaml`
+6. Write tests in a co-located `*.spec.ts` file
 
-The `/chat` endpoint is protected by a custom `ChatRateLimitGuard`:
+## See Also
 
-- **Limit**: 20 requests per minute per IP
-- **Response**: `429 Too Many Requests` with a `Retry-After` header (in seconds)
-- **Logging**: Rate limit hits are logged with a hashed IP (SHA-256, first 16 chars) and timestamp
-- **IP Detection**: Respects `X-Forwarded-For` header for reverse proxy setups
+- [Configuration Reference](configuration.md) — full env var reference
+- [Connectors Documentation](connectors.md) — detailed connector architecture
+- [Security Best Practices](security.md) — security considerations

@@ -2,10 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as https from 'https';
 import * as http from 'http';
-import {
-  withConnectorErrorHandling,
-  ConnectorErrorResult,
-} from './utils/connector-error';
 
 export interface ArgoCDAppStatus {
   name: string;
@@ -61,11 +57,11 @@ export class ArgoCDConnector {
   /**
    * Get sync status and health for a specific ArgoCD application.
    */
-  async getAppStatus(appName: string): Promise<ArgoCDAppStatus | ConnectorErrorResult<ArgoCDAppStatus>> {
-    return withConnectorErrorHandling('argocd', async (signal) => {
-      this.logger.debug(`ArgoCD: fetching status for app ${appName}`);
+  async getAppStatus(appName: string): Promise<ArgoCDAppStatus> {
+    this.logger.debug(`ArgoCD: fetching status for app ${appName}`);
 
-      const response = await this.request(`/api/v1/applications/${encodeURIComponent(appName)}`, signal);
+    try {
+      const response = await this.request(`/api/v1/applications/${encodeURIComponent(appName)}`);
       const body = JSON.parse(response.body);
 
       if (response.statusCode !== 200) {
@@ -73,17 +69,20 @@ export class ArgoCDConnector {
       }
 
       return this.transformAppStatus(body);
-    });
+    } catch (error) {
+      this.logger.error(`ArgoCD getAppStatus failed: ${error.message}`);
+      throw error;
+    }
   }
 
   /**
    * List all applications with their sync and health status.
    */
-  async listApps(): Promise<ArgoCDAppStatus[] | ConnectorErrorResult<ArgoCDAppStatus[]>> {
-    return withConnectorErrorHandling('argocd', async (signal) => {
-      this.logger.debug('ArgoCD: listing all applications');
+  async listApps(): Promise<ArgoCDAppStatus[]> {
+    this.logger.debug('ArgoCD: listing all applications');
 
-      const response = await this.request('/api/v1/applications', signal);
+    try {
+      const response = await this.request('/api/v1/applications');
       const body = JSON.parse(response.body);
 
       if (response.statusCode !== 200) {
@@ -92,7 +91,10 @@ export class ArgoCDConnector {
 
       const items = body.items || [];
       return items.map((item: any) => this.transformAppStatus(item));
-    });
+    } catch (error) {
+      this.logger.error(`ArgoCD listApps failed: ${error.message}`);
+      throw error;
+    }
   }
 
   /**
@@ -102,12 +104,8 @@ export class ArgoCDConnector {
     try {
       const apps = await this.listApps();
 
-      if (Array.isArray(apps) && apps.length === 0) {
+      if (apps.length === 0) {
         return 'No ArgoCD applications found.';
-      }
-
-      if (!Array.isArray(apps)) {
-        return `Failed to query ArgoCD: ${(apps as any)?.error || 'unknown error'}`;
       }
 
       const synced = apps.filter(a => a.syncStatus === 'Synced').length;
@@ -170,7 +168,7 @@ export class ArgoCDConnector {
     };
   }
 
-  private request(path: string, signal?: AbortSignal): Promise<{ statusCode: number; body: string }> {
+  private request(path: string): Promise<{ statusCode: number; body: string }> {
     return new Promise((resolve, reject) => {
       const url = new URL(path, this.baseUrl);
       const lib = url.protocol === 'https:' ? https : http;
@@ -185,7 +183,7 @@ export class ArgoCDConnector {
 
       const req = lib.get(
         url.toString(),
-        { headers, timeout: 10000, signal },
+        { headers, timeout: 10000 },
         (res) => {
           let data = '';
           res.on('data', (chunk) => (data += chunk));
@@ -195,13 +193,7 @@ export class ArgoCDConnector {
         },
       );
 
-      req.on('error', (err) => {
-        if (err.name === 'AbortError') {
-          reject(new Error('Request timed out'));
-        } else {
-          reject(err);
-        }
-      });
+      req.on('error', (err) => reject(err));
       req.on('timeout', () => {
         req.destroy();
         reject(new Error('Request timed out'));
