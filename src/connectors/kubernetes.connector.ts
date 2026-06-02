@@ -13,7 +13,7 @@ export class KubernetesConnector {
   private available = false;
 
   constructor() {
-    this.available = !!process.env.KUBECONFIG_BASE64 || !!process.env.KUBECONFIG;
+    this.available = !!process.env.KUBECONFIG;
     if (!this.available) this.logger.warn('[k8s] no KUBECONFIG — running in offline mode');
   }
 

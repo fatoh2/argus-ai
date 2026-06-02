@@ -8,7 +8,6 @@ describe('KubernetesConnector', () => {
   beforeEach(async () => {
     // Ensure KUBECONFIG is not set so connector runs in offline mode
     delete process.env.KUBECONFIG;
-    delete process.env.KUBECONFIG_BASE64;
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [KubernetesConnector],
