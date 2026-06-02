@@ -56,7 +56,7 @@ export class LokiConnector {
    * Returns log entries with their labels and timestamps.
    */
   async queryRange(options: LokiQueryOptions): Promise<LokiQueryResult | ConnectorErrorResult<LokiQueryResult>> {
-    return withConnectorErrorHandling('loki', async () => {
+    return withConnectorErrorHandling('loki', async (signal) => {
       const { query, start, end, limit } = options;
       const effectiveLimit = Math.min(limit ?? this.defaultLimit, 500);
 
@@ -75,7 +75,7 @@ export class LokiConnector {
 
       this.logger.debug(`Loki range query: ${query} from ${startTime.toISOString()} to ${endTime.toISOString()}`);
 
-      const response = await this.request(`/loki/api/v1/query_range?${params.toString()}`);
+      const response = await this.request(`/loki/api/v1/query_range?${params.toString()}`, signal);
       const body = JSON.parse(response.body);
 
       if (response.statusCode !== 200) {
@@ -96,7 +96,7 @@ export class LokiConnector {
     level?: string,
     limit?: number,
   ): Promise<LokiQueryResult | ConnectorErrorResult<LokiQueryResult>> {
-    return withConnectorErrorHandling('loki', async () => {
+    return withConnectorErrorHandling('loki', async (signal) => {
       let query = `{${labelSelector}}`;
 
       if (level) {
@@ -184,12 +184,12 @@ export class LokiConnector {
     return new Date(Date.now() - 3600000);
   }
 
-  private request(path: string): Promise<{ statusCode: number; body: string }> {
+  private request(path: string, signal?: AbortSignal): Promise<{ statusCode: number; body: string }> {
     return new Promise((resolve, reject) => {
       const url = new URL(path, this.baseUrl);
       const lib = url.protocol === 'https:' ? https : http;
 
-      const req = lib.get(url.toString(), { timeout: 10000 }, (res) => {
+      const req = lib.get(url.toString(), { timeout: 10000, signal }, (res) => {
         let data = '';
         res.on('data', (chunk) => (data += chunk));
         res.on('end', () => {
@@ -197,7 +197,14 @@ export class LokiConnector {
         });
       });
 
-      req.on('error', (err) => reject(err));
+      req.on('error', (err) => {
+        // AbortError is expected on timeout — reject so withConnectorErrorHandling catches it
+        if (err.name === 'AbortError') {
+          reject(new Error('Request timed out'));
+        } else {
+          reject(err);
+        }
+      });
       req.on('timeout', () => {
         req.destroy();
         reject(new Error('Request timed out'));

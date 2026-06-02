@@ -17,13 +17,13 @@ export interface ConnectorErrorResult<T = null> {
  */
 export async function withConnectorErrorHandling<T>(
   connectorName: string,
-  fn: () => Promise<T>,
+  fn: (signal: AbortSignal) => Promise<T>,
   timeoutMs: number = 10_000,
 ): Promise<T | ConnectorErrorResult<T>> {
   const start = Date.now();
 
   try {
-    const result = await withTimeout(fn(), timeoutMs);
+    const result = await withTimeout(fn, timeoutMs);
     return result;
   } catch (error: any) {
     const duration = Date.now() - start;
@@ -43,19 +43,37 @@ export async function withConnectorErrorHandling<T>(
 }
 
 /**
- * Creates a promise that rejects after a given timeout.
+ * Creates a promise that rejects after a given timeout using AbortController.
+ * Passes the AbortSignal to the factory function so the underlying operation
+ * can be cancelled (e.g. HTTP requests via fetch).
+ * Uses Promise.race to enforce the timeout even if the factory ignores the signal.
  */
-function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: ReturnType<typeof setTimeout>;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
+async function withTimeout<T>(
+  factory: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+): Promise<T> {
+  const controller = new AbortController();
+  const { signal } = controller;
+
+  const timer = setTimeout(() => {
+    controller.abort();
+  }, ms);
+
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    // If the signal fires, reject with TimeoutError
+    signal.addEventListener('abort', () => {
       const err = new Error(`Timed out after ${ms}ms`);
       err.name = 'TimeoutError';
       reject(err);
-    }, ms);
+    }, { once: true });
   });
 
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer!));
+  try {
+    const result = await Promise.race([factory(signal), timeoutPromise]);
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /**
