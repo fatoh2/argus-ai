@@ -28,7 +28,12 @@ This document outlines the security considerations and best practices for deploy
 
 ### `config.example.yaml` Placeholders
 - The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
-- The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
+
+### Docker Compose Dev Environment Security
+- The `docker-compose.dev.yml` file enables **Grafana anonymous admin access** (`GF_AUTH_ANONYMOUS_ENABLED=true`, `GF_AUTH_ANONYMOUS_ORG_ROLE=Admin`) for local development convenience.
+- **This is acceptable only for local development on a trusted machine.** Never deploy the dev docker-compose file to a production or internet-facing environment.
+- The dev stack uses default passwords and no TLS — it is intentionally insecure for ease of use.
+- For production, use the production Helm chart with proper authentication, TLS, and network policies.
 
 ## 2. User Query Security (Prompt Injection Prevention)
 
