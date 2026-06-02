@@ -4,7 +4,7 @@
  */
 export interface ConnectorErrorResult<T = null> {
   error: string;
-  data: T;
+  data: T | null;
 }
 
 /**

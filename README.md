@@ -1,6 +1,6 @@
 # Argus AI
 
-Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by Google's Gemini 1.5 Flash API, it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
+Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by DeepSeek V3 (with optional Gemini fallback), it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
 ## Features
 
@@ -11,7 +11,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
 - **Input Validation & Sanitization**: The `/chat` endpoint validates message length (max 4000 characters), strips control characters and null bytes, and rejects empty messages with a `400 Bad Request`.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
-- **Real AI Responses**: The `/chat` endpoint is wired to the LLM service — queries return real AI-generated answers powered by Google Gemini 1.5 Flash, not stubs. Chat history is preserved across turns for contextual conversations.
+- **Real AI Responses**: The `/chat` endpoint is wired to the LLM service — queries return real AI-generated answers powered by DeepSeek V3 (with optional Gemini fallback), not stubs. Chat history is preserved across turns for contextual conversations.
 - **LLM Error Resilience**: LLM calls have a 30-second hard timeout (returns `504 Gateway Timeout`), automatic retry on 5xx errors (up to 1 retry), and a 50k-token prompt limit guard that truncates oldest history first. A `GET /health/llm` endpoint provides LLM health monitoring with latency tracking.
 - **LLM Error Classification**: LLM errors are mapped to appropriate HTTP status codes — rate limits return `429 Too Many Requests`, auth failures return `401 Unauthorized`, and server errors return `502 Bad Gateway`.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
@@ -40,17 +40,16 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
-
-> **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
     ```
 
+    > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
 
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
     ```bash
     cp config.example.yaml config.yaml
     ```
-    **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${GEMINI_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
+    **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${DEEPSEEK_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
     **Never commit `config.yaml` to Git if it contains sensitive information!**
 
     For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
@@ -66,18 +65,12 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```
     This will start the NestJS backend, typically on `http://localhost:3000`.
 
-6.  **Start Querying!**
-    Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
-
+6.  **Query your infrastructure**:
     ```bash
     curl -X POST http://localhost:3000/chat \
-    -H "Content-Type: application/json" \
-    -d '{"message": "What is the status of my web-app deployment?"}'
+      -H "Content-Type: application/json" \
+      -d '{"message": "Summarize the last 5 errors from Loki"}'
     ```
-
-    **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
-
-    Refer to [Example Queries](docs/examples.md) for more example queries.
 
 ## Configuration
 
@@ -92,9 +85,10 @@ Key environment variables:
 
 | Variable | Description | Required | Default |
 |---|---|---|---|
-| `GEMINI_API_KEY` | Google Gemini API key | Yes | — |
+| `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | Yes | — |
+| `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No | — |
 | `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
-| `LLM_MAX_PROMPT_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
+| `LLM_MAX_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
 | `KUBECONFIG_PATH` | Path to kubeconfig file | No | In-cluster config |
 | `PROMETHEUS_URL` | Prometheus URL | No | `http://localhost:9090` |
@@ -109,8 +103,8 @@ Key environment variables:
 ```
 ┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
 │  User/Client │────▶│  Chat API    │────▶│  LlmService     │
-│  (curl, UI)  │     │  POST /chat  │     │  (Gemini 1.5    │
-└─────────────┘     └──────────────┘     │   Flash)        │
+│  (curl, UI)  │     │  POST /chat  │     │  (DeepSeek V3   │
+└─────────────┘     └──────────────┘     │   + Gemini)     │
                                          └────────┬────────┘
                                                   │
                     ┌─────────────────────────────┼─────────────────────────┐

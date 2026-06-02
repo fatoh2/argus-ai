@@ -27,7 +27,8 @@ This document outlines the security considerations and best practices for deploy
 - Stray nested clones can be safely deleted with `rm -rf argus-ai/`.
 
 ### `config.example.yaml` Placeholders
-- The `config.example.yaml` file uses environment variable references (e.g., `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
+- The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
+- The `config.example.yaml` file uses environment variable references (e.g., `${DEEPSEEK_API_KEY}`, `${ARGOCD_AUTH_TOKEN}`) to indicate where sensitive values should be provided. These placeholders are designed to prevent accidental exposure of credential formats.
 
 ## 2. User Query Security (Prompt Injection Prevention)
 
@@ -52,7 +53,7 @@ The `/chat` endpoint implements multiple layers of input validation:
 4. **Empty Message Rejection**: After sanitization, empty messages are rejected with a `400 Bad Request`.
 
 ### LLM Guardrails
-- In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses.
+- In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses. The DeepSeek V3 system prompt instructs the model to never reveal API keys, tokens, or sensitive configuration.
 
 ## 3. Connector Interaction Security
 
