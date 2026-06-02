@@ -56,6 +56,7 @@ This document outlines the security considerations and best practices for deploy
 - Temporary network failures are handled with retries, and persistent failures are reported gracefully without exposing sensitive internal information.
 
 ### Rate Limiting and Caching
+- **API Rate Limiting**: The `/chat` endpoint is protected by a rate limiter, allowing a maximum of 20 requests per minute per IP address. This prevents abuse and ensures the stability and availability of the service.
 - The underlying implementation considers rate limiting for external API calls to prevent overwhelming connected services.
 - Caching mechanisms may be employed for frequently requested, non-sensitive data to improve performance and reduce external API load.
 
