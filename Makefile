@@ -25,7 +25,13 @@ test-local: ## Boot stack, run tsc + tests, hit /health endpoint
 	docker compose up -d
 	@echo "Waiting for health..."
 	@for i in $$(seq 1 30); do \
-	  curl -sf http://localhost:3000/health && break || sleep 2; \
+	  curl -sf http://localhost:3000/health && break; \
+	  if [ $$i -eq 30 ]; then \
+	    echo "❌ Health check failed after 30 attempts"; \
+	    docker compose logs argus-ai; \
+	    exit 1; \
+	  fi; \
+	  sleep 2; \
 	done
 	npx tsc --noEmit
 	npm test

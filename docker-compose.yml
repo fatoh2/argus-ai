@@ -7,6 +7,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       retries: 5
+      start_period: 10s
 
   argus-ai:
     build: .
