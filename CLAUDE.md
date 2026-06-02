@@ -22,7 +22,6 @@ The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If yo
 
 ## Repo Structure
 ```
-docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana\ndocker/\n  prometheus/\n    prometheus.yml         # Prometheus config — scrapes itself + argus-ai\n  promtail/\n    promtail.yml           # Promtail config — ships /var/log/*.log to Loki\n  grafana/\n    datasources/\n      datasources.yaml     # Auto-provisioned Prometheus + Loki datasources\n    dashboards/\n      dashboards.yaml      # Dashboard provisioning config
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
 docker/
   prometheus/
@@ -64,7 +63,6 @@ src/
     gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
-docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana\ndocker/\n  prometheus/\n    prometheus.yml         # Prometheus config — scrapes itself + argus-ai\n  promtail/\n    promtail.yml           # Promtail config — ships /var/log/*.log to Loki\n  grafana/\n    datasources/\n      datasources.yaml     # Auto-provisioned Prometheus + Loki datasources\n    dashboards/\n      dashboards.yaml      # Dashboard provisioning config
 
 ## Connector Architecture
 
@@ -81,7 +79,6 @@ All connectors:
 Every connector method must use `withConnectorErrorHandling`:
 
 ```typescript
-docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana\ndocker/\n  prometheus/\n    prometheus.yml         # Prometheus config — scrapes itself + argus-ai\n  promtail/\n    promtail.yml           # Promtail config — ships /var/log/*.log to Loki\n  grafana/\n    datasources/\n      datasources.yaml     # Auto-provisioned Prometheus + Loki datasources\n    dashboards/\n      dashboards.yaml      # Dashboard provisioning config
 import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
 
 @Injectable()
@@ -104,7 +101,6 @@ export class MyConnector {
   }
 }
 ```
-docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana\ndocker/\n  prometheus/\n    prometheus.yml         # Prometheus config — scrapes itself + argus-ai\n  promtail/\n    promtail.yml           # Promtail config — ships /var/log/*.log to Loki\n  grafana/\n    datasources/\n      datasources.yaml     # Auto-provisioned Prometheus + Loki datasources\n    dashboards/\n      dashboards.yaml      # Dashboard provisioning config
 
 The utility provides:
 - **10-second timeout with AbortController** (configurable via third parameter) — cancels the underlying HTTP request on timeout
@@ -113,3 +109,7 @@ The utility provides:
 
 ### AbortSignal Parameter
 
+The factory function receives an `AbortSignal` as its first argument:
+
+```typescript
+fn: (signal: AbortSignal) => Promise<T>
