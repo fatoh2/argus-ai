@@ -181,3 +181,19 @@ Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 faile
 
 Recommendation: Review the unit test logs for the failing tests and fix the underlying issues.
 ```
+
+## Rate Limit Exceeded
+
+**Query**: (Any query sent more than 20 times in a minute)
+
+**Expected AI Response**: If you exceed the rate limit, the API returns a  response instead of the usual JSON. The response includes a  header (the authoritative source for retry timing) indicating the number of seconds to wait before retrying.
+
+Example Response (HTTP 429):
+
+
+> **Note**: The  HTTP header is the authoritative source for retry timing. The  field in the JSON body is provided for convenience and will always match the header value.
+
+The server also logs the event with a hashed IP address for monitoring:
+
+
+**What to do**: Wait the number of seconds specified in the  header before sending another request. The limit resets on a rolling 60-second window per IP address.

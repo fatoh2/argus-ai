@@ -9,6 +9,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
+- **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP to prevent abuse.
 
 ## Demo
 
@@ -62,9 +63,10 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```bash
     curl -X POST http://localhost:3000/chat \
     -H "Content-Type: application/json" \
-    -d '{"query": "What is the status of my web-app deployment?"}'
+    -d '{"message": "What is the status of my web-app deployment?"}'
     ```
 
+    **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
     Refer to [Example Queries](docs/examples.md) for more example queries.
 
 ## Configuration
@@ -92,6 +94,7 @@ See [Configuration Reference](docs/configuration.md) for full details.
 ## Security Best Practices
 
 - **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
+- **Input Validation**: The `/chat` endpoint validates message length (max 4000 characters) and strips control characters. Empty messages are rejected with a `400 Bad Request`.\n- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
 - **Secure Environment Variables**: Sensitive information is loaded and validated securely from environment variables, preventing hardcoding of credentials.
 - **Least Privilege Access**: Connectors are designed to operate with the minimum necessary permissions, adhering to the principle of least privilege to limit potential impact of compromise.
 - **Read-Only Operations**: Argus AI is strictly read-only. It will never execute commands or modify your infrastructure, ensuring a safe diagnostic and monitoring environment.
