@@ -6,3 +6,8 @@ dist/
 config.yaml
 !config.example.yaml
 *.log
+
+# Prevent agents cloning repo inside itself
+argus-ai/
+# Build output
+dist/
