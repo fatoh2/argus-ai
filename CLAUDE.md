@@ -14,6 +14,7 @@ and optionally argus-monitor's database.
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
 - **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
 - **Local Dev**: Docker Compose (`docker-compose.dev.yml`) with Prometheus, Loki, Grafana
+- **Dev Shortcuts**: `Makefile` with `make up`, `make down`, `make check`, `make test`, `make chat`, `make health`, `make logs`
 
 ## Standing Rules
 
@@ -23,6 +24,7 @@ The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If yo
 ## Repo Structure
 ```
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
+Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
 docker/
   prometheus/
     prometheus.yml         # Prometheus config — scrapes itself + argus-ai

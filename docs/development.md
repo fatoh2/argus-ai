@@ -279,7 +279,7 @@ function sanitizeLog(message: string): string {
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run all tests (or use: make test)
 npm test
 
 # Run tests with coverage
