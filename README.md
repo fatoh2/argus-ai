@@ -40,10 +40,9 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
-
-> **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
-
     ```
+
+    > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
 
 3.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
@@ -66,18 +65,12 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```
     This will start the NestJS backend, typically on `http://localhost:3000`.
 
-6.  **Start Querying!**
-    Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
-
+6.  **Query your infrastructure**:
     ```bash
     curl -X POST http://localhost:3000/chat \
-    -H "Content-Type: application/json" \
-    -d '{"message": "What is the status of my web-app deployment?"}'
+      -H "Content-Type: application/json" \
+      -d '{"message": "Summarize the last 5 errors from Loki"}'
     ```
-
-    **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
-
-    Refer to [Example Queries](docs/examples.md) for more example queries.
 
 ## Configuration
 

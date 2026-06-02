@@ -8,7 +8,9 @@ export class GeminiService {
 
   constructor() {
     const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
+    if (!apiKey) {
+      throw new Error('GEMINI_API_KEY is not set');
+    }
     this.genAI = new GoogleGenerativeAI(apiKey);
     this.model = this.genAI.getGenerativeModel({
       model: 'gemini-1.5-flash',
@@ -33,6 +35,7 @@ export class GeminiService {
       ?.filter((p: any) => p.text)
       ?.map((p: any) => p.text)
       ?.join('') ?? '';
+
     return text || 'I was unable to generate a response.';
   }
 }

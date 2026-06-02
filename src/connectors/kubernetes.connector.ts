@@ -1,4 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
+import {
+  withConnectorErrorHandling,
+  ConnectorErrorResult,
+} from './utils/connector-error';
 
 /** Kubernetes connector — reads from cluster via KUBECONFIG env var.
  *  Gracefully returns empty data when no cluster is configured. */

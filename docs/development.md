@@ -8,10 +8,9 @@ This guide provides instructions for setting up your development environment, ru
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
-
-> **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones by automation agents. If you see this directory, it is a stray artifact and can be safely deleted.
-
     ```
+
+    > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones by automation agents. If you see this directory, it is a stray artifact and can be safely deleted.
 
 2.  **Install dependencies**:
     ```bash
@@ -65,7 +64,7 @@ src/
     loki.connector.ts     # Loki log querying (LogQL)
     argocd.connector.ts   # ArgoCD application status
   llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
-    llm.module.ts         # LlmModule — imports DeepSeekModule, registers LlmService and LlmController
+    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService and LlmController
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, 50k token guard, health check, error mapping
     llm.service.spec.ts   # Tests for LlmService
     llm.controller.ts     # POST /llm/run-tool-use-loop + GET /health/llm — LLM health check endpoint
@@ -145,41 +144,61 @@ All connector methods should be wrapped with the `withConnectorErrorHandling` ut
 import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
 
 @Injectable()
-export class LokiConnector {
-  async queryLogs(query: string, start: string, end: string): Promise<LokiResult[] | ConnectorErrorResult> {
-    return withConnectorErrorHandling('Loki', 'queryLogs', async () => {
-      const response = await fetch(`${this.baseUrl}/loki/api/v1/query_range?query=${encodeURIComponent(query)}&start=${start}&end=${end}`);
-      if (!response.ok) {
-        throw new Error(`Loki returned status ${response.status}`);
-      }
-      const data = await response.json();
-      return data.data.result;
+export class MyConnector {
+  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
+    return withConnectorErrorHandling('my-connector', async (signal) => {
+      // Your actual connector logic here
+      // Pass signal to HTTP requests for proper cancellation on timeout
+      return await this.api.fetchData({ signal });
     });
+  }
+
+  async isHealthy(): Promise<boolean> {
+    try {
+      const result = await this.getData();
+      return !(result && typeof result === 'object' && 'error' in result);
+    } catch {
+      return false;
+    }
   }
 }
 ```
 
-### How It Works
+### What it provides
 
-The `withConnectorErrorHandling` utility:
+- **10-second timeout with AbortController** — calls that exceed this return `{ error: "<name> unavailable", data: null }` (configurable via third parameter). The underlying HTTP request is cancelled via `AbortController.abort()`.
+- **Structured errors** — callers always get a predictable shape, never an unhandled exception
+- **Safe logging** — logs include connector name, error type, and duration; API keys and tokens are automatically redacted via `sanitizeLog()`
+- **Custom timeout** — the third parameter accepts a custom timeout in milliseconds
 
-1. Wraps the connector call with a 10-second timeout using `AbortController`
-2. Catches any errors (timeout, network, HTTP) and returns a structured `ConnectorErrorResult`
-3. Sanitizes error messages for logging (redacts API keys, tokens, secrets)
-4. Never throws — always returns either the expected result or a `ConnectorErrorResult`
+### AbortSignal Parameter
 
-## Adding a New Connector
+The factory function receives an `AbortSignal` as its first argument:
 
-To add a new read-only connector:
+```typescript
+fn: (signal: AbortSignal) => Promise<T>
+```
 
-1. Create a new file in `src/connectors/` (e.g., `my-tool.connector.ts`)
-2. Implement a class with methods wrapped in `withConnectorErrorHandling()`
-3. Register it in `connectors.module.ts`
-4. Add configuration to `config.yaml` and `.env.example`
-5. Add the connector to the system prompt in `src/llm/gemini/systemPrompt.ts`
-6. Write tests in a `.spec.ts` file
+- **HTTP connectors** (ArgoCD, Loki): pass `signal` to `http.get({ signal })` for proper request cancellation
+- **Delegating connectors** (Kubernetes, K8sPrometheus): accept as `_signal` for API consistency
+- **Custom connectors**: if making HTTP requests, pass the signal to enable cancellation
+
+### The `sanitizeLog()` Utility
+
+The `sanitizeLog()` function automatically redacts sensitive information from error logs:
+
+```typescript
+function sanitizeLog(message: string): string {
+  return message.replace(
+    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
+    '$1***redacted***$1',
+  );
+}
+```
 
 ## Testing
+
+### Running Tests
 
 ```bash
 # Run all tests
@@ -192,4 +211,24 @@ npm run test:cov
 npm run test:watch
 ```
 
-All new code should include unit tests. Connector tests should mock external HTTP calls.
+### Writing Tests
+
+- Use Jest with `@nestjs/testing` and mocked `ConfigService`
+- Test files should be co-located with their source files as `*.spec.ts`
+- Mock external dependencies (DeepSeek API, Gemini API, Kubernetes client, etc.)
+- Test both success and failure paths (timeouts, errors, empty responses)
+
+## Adding a New Connector
+
+1. Create the connector file in `src/connectors/`
+2. Implement `isHealthy(): Promise<boolean>`
+3. Wrap all public methods with `withConnectorErrorHandling('<name>', ...)`
+4. Register in `ConnectorsModule` (providers + exports)
+5. Add configuration to `config.example.yaml`
+6. Write tests in a co-located `*.spec.ts` file
+
+## See Also
+
+- [Configuration Reference](configuration.md) — full env var reference
+- [Connectors Documentation](connectors.md) — detailed connector architecture
+- [Security Best Practices](security.md) — security considerations

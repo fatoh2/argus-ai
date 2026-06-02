@@ -98,66 +98,47 @@ The Kubernetes connector can operate in two modes:
     -   Ensure the service account has appropriate read-only permissions (e.g., `get`, `list`, `watch` for pods, deployments, events).
     -   **Do not set `KUBECONFIG_PATH`** in your `config.yaml` or environment variables if deploying in-cluster.
 
-2.  **Out-of-cluster (Recommended for Local Development)**: For local development or when running outside a cluster, you can point Argus AI to a kubeconfig file.
-    -   Set the `KUBECONFIG_PATH` environment variable to the path of your kubeconfig file (e.g., `~/.kube/config`).
-    -   Ensure the context in your kubeconfig file is correctly configured to access your target cluster.
-
-**Available Methods** (all wrapped with graceful degradation):
-
-- `isHealthy()` — Health check
-- `listPods(namespace)` — List pods in a namespace
-- `getPodLogs(podName, namespace)` — Get logs for a specific pod
-- `describeDeployment(deploymentName, namespace)` — Describe a deployment
+2.  **Out-of-cluster (Recommended for Local Development)**: For local development, you can point Argus AI to an existing kubeconfig file.
+    -   Set the `KUBECONFIG_PATH` environment variable or add it to your `config.yaml`.
+    -   The path supports `~` expansion and environment variable references (e.g., `${HOME}/.kube/config`).
 
 ### Prometheus Connector Setup
 
-1.  **URL Configuration**: Set the `PROMETHEUS_URL` environment variable to the base URL of your Prometheus instance.
-    -   Example: `PROMETHEUS_URL=http://localhost:9090`
-    -   If Prometheus requires authentication, you will need to configure a reverse proxy or API gateway to handle authentication and forward requests to Prometheus, as Argus AI does not directly support Prometheus authentication.
+1.  Ensure your Prometheus instance is accessible from where Argus AI is running.
+2.  Set the `PROMETHEUS_URL` environment variable or add it to your `config.yaml`.
+3.  If your Prometheus instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
 ### Loki Connector Setup
 
-1.  **URL Configuration**: Set the `LOKI_URL` environment variable to the base URL of your Loki instance.
-    -   Example: `LOKI_URL=http://localhost:3100`
-    -   Similar to Prometheus, if Loki requires authentication, consider using a reverse proxy.
-
-**Available Methods** (all wrapped with graceful degradation):
-
-- `isHealthy()` — Health check
-- `queryLogs(query, start, end)` — Query logs using LogQL
-- `getLogStreams()` — List available log streams
+1.  Ensure your Loki instance is accessible from where Argus AI is running.
+2.  Set the `LOKI_URL` environment variable or add it to your `config.yaml`.
+3.  If your Loki instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
 ### ArgoCD Connector Setup
 
-1.  **URL and Token Configuration**: Set the `ARGOCD_URL` and `ARGOCD_AUTH_TOKEN` environment variables.
-    -   Example: `ARGOCD_URL=https://argocd.example.com`
-    -   The token must have read-only access to applications.
-
-**Available Methods** (all wrapped with graceful degradation):
-
-- `isHealthy()` — Health check
-- `listApplications()` — List all ArgoCD applications
-- `getApplicationStatus(appName)` — Get sync status and health for a specific application
+1.  Ensure your ArgoCD instance is accessible from where Argus AI is running.
+2.  Generate an ArgoCD authentication token with appropriate read-only permissions.
+3.  Set the `ARGOCD_URL` and `ARGOCD_AUTH_TOKEN` environment variables or add them to your `config.yaml`.
 
 ### GitHub Actions Connector Setup
 
-1.  **Token Configuration**: Set the `GITHUB_TOKEN` environment variable.
-    -   The token must have the `workflow` scope to read workflow runs.
+1.  Generate a GitHub Personal Access Token (PAT) with the `workflow` scope.
+2.  Set the `GITHUB_TOKEN` environment variable or add it to your `config.yaml`.
 
-**Available Methods** (all wrapped with graceful degradation):
+### Argus Monitor Connector Setup
 
-- `isHealthy()` — Health check
-- `listWorkflowRuns(owner, repo)` — List recent workflow runs for a repository
-- `getWorkflowRunDetails(owner, repo, runId)` — Get details for a specific workflow run
+1.  Ensure you have a running Argus Monitor instance with a PostgreSQL database.
+2.  Set the `ARGUS_MONITOR_DB_URL` environment variable or add it to your `config.yaml`.
+3.  The connector uses a read-only connection to query alerts and wallet activity.
 
-### Argus Monitor Connector Setup (Optional)
+## Error Handling and Resilience
 
-1.  **Database URL Configuration**: Set the `ARGUS_MONITOR_DB_URL` environment variable.
-    -   This connects to a read-only replica of the Argus Monitor PostgreSQL database.
-    -   The connector provides alerts and wallet activity data.
+Argus AI is designed to handle various operational challenges gracefully:
 
-**Available Methods** (all wrapped with graceful degradation):
-
-- `isHealthy()` — Health check
-- `getRecentAlerts(limit)` — Get recent alerts from Argus Monitor
-- `getWalletActivity(address, limit)` — Get recent wallet activity for a given address
+- **Invalid Configuration**: The application will fail to start if critical configuration (e.g., LLM API key) is missing.
+- **Connector Failures**: All connectors implement graceful degradation. If a connector fails (e.g., Prometheus is unreachable), the LLM will inform the user that the service is unavailable and continue processing with available data.
+- **LLM Timeouts**: The LLM service has a configurable hard timeout (`LLM_TIMEOUT_MS`, default 30s). If the LLM does not respond within this time, the request is aborted and a `504 Gateway Timeout` is returned.
+- **LLM Retries**: On 5xx server errors, the LLM service will retry up to `LLM_MAX_RETRIES` (default 1) times before returning a `502 Bad Gateway`.
+- **Prompt Truncation**: If the accumulated chat history exceeds `LLM_MAX_TOKENS` (default 50000), the oldest messages are truncated to keep the prompt within limits.
+- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
+- **Input Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
