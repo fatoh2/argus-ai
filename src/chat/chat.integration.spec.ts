@@ -9,7 +9,12 @@ describe('Chat Integration (e2e)', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    // Set env for testing — no real API key needed since DeepSeek will fail gracefully
+    // Set env for testing — no real API key needed since DeepSeek will fail gracefully.
+    // DEEPSEEK_URL is set to an unreachable localhost address intentionally:
+    // this ensures tests never hit the real API, and verifies the app handles
+    // connection failures gracefully (returns 502 instead of crashing).
+    // The production default (api.deepseek.com/v1) is in .env.example and is
+    // only used when running outside of tests.
     process.env.DEEPSEEK_API_KEY = 'test-key';
     process.env.DEEPSEEK_URL = 'http://localhost:19999/v1'; // unreachable — will fail fast
     process.env.NODE_ENV = 'test';

@@ -22,6 +22,7 @@ test: ## Run tests
 	npm test
 
 test-local: ## Boot stack, run tsc + tests, hit /health endpoint
+	@command -v curl >/dev/null 2>&1 || { echo "❌ curl is required but not installed. Install it with: sudo apt-get install -y curl"; exit 1; }
 	docker compose up -d
 	@echo "Waiting for health..."
 	@for i in $$(seq 1 30); do \
