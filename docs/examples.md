@@ -243,7 +243,7 @@ Unhealthy applications:
 
 **Query**: (Any query sent more than 20 times in a minute)
 
-**Expected AI Response**: If you exceed the rate limit, the API returns a `429 Too Many Requests` response instead of the usual JSON. The response includes a `Retry-After` header indicating the number of seconds to wait before retrying.
+**Expected AI Response**: If you exceed the rate limit, the API returns a `429 Too Many Requests` response instead of the usual JSON. The response includes a `Retry-After` header (the authoritative source for retry timing) indicating the number of seconds to wait before retrying.
 
 Example Response (HTTP 429):
 ```json
@@ -253,6 +253,8 @@ Example Response (HTTP 429):
   "retryAfterSeconds": 45
 }
 ```
+
+> **Note**: The `Retry-After` HTTP header is the authoritative source for retry timing. The `retryAfterSeconds` field in the JSON body is provided for convenience and will always match the header value.
 
 The server also logs the event with a hashed IP address for monitoring:
 ```
