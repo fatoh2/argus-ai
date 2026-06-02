@@ -75,8 +75,9 @@ The Kubernetes connector can operate in two modes:
 **Available Methods** (all wrapped with graceful degradation):
 
 - `isHealthy()` — Health check
-- `queryLogs(query)` — Execute a LogQL query
-- `getServiceLogs(service, start, end, maxLines?)` — Get logs for a specific service (capped at 500 lines)
+- `queryLogs(labelSelector, start?, end?, level?, limit?)` — Execute a LogQL query for a specific label selector
+- `queryRange(options)` — Execute a LogQL range query with full options (query, start, end, limit)
+- `summarizeErrors(hours?, labelSelector?)` — Summarize error logs from the last N hours
 
 ### ArgoCD Connector Setup
 
@@ -91,6 +92,7 @@ The Kubernetes connector can operate in two modes:
 - `isHealthy()` — Health check
 - `getAppStatus(appName)` — Get sync/health status for a specific application
 - `listApps()` — List all applications with their status
+- `getClusterSummary()` — Get a summary of all applications (healthy vs unhealthy)
 
 ### GitHub Actions Connector Setup
 
@@ -111,45 +113,12 @@ The Kubernetes connector can operate in two modes:
 Argus AI is designed to handle various operational challenges gracefully:
 
 - **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
-- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector methods are wrapped with `withConnectorErrorHandling()` which provides:
-  - **10-second timeout** — prevents hanging on unresponsive services
-  - **Structured error responses** — returns `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
-  - **Safe logging** — error logs include connector name, error type, and duration; API keys and tokens are automatically redacted
+- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
+- **Safe Logging**: Connector error logs include the connector name, error type, and duration, but **never API keys, tokens, or secrets**. A `sanitizeLog()` utility automatically redacts values matching common credential patterns (bearer tokens, API keys, secrets) from log output.
 - **Empty/Null/Large Responses**:
     -   **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
-    -   **Large Data Volumes**: Strategies like pagination, sampling, and summarization will be employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
+    -   **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing. Loki queries are capped at 500 lines by default.
 
-## Performance Considerations
+## See Also
 
--   **Optimizing Queries**: When interacting with external systems like Prometheus and Loki, it's recommended to specify precise time ranges and aggressive filtering in your natural language queries to minimize the data volume retrieved. This directly impacts response times and resource usage.
--   **LLM Processing**: The time taken for LLM processing is directly proportional to the complexity and volume of the data provided. Efficient data retrieval and summarization are key to maintaining responsiveness.
-
-## Example `config.example.yaml`
-
-This section provides a full example of the `config.example.yaml` structure.
-Remember to copy this to `config.yaml` and fill in your actual values.
-
-```yaml
-gemini:
-  api_key: "${GEMINI_API_KEY}"
-  model: "gemini-2.0-flash"
-
-kubernetes:
-  kubeconfig_path: "~/.kube/config"
-
-prometheus:
-  url: "http://localhost:9090"
-
-loki:
-  url: "http://localhost:3100"
-
-argocd:
-  url: "https://argocd.example.com"
-  token: "${ARGOCD_AUTH_TOKEN}"
-
-github_actions:
-  token: "${GITHUB_TOKEN}"
-
-argus_monitor:
-  database_url: "${ARGUS_MONITOR_DB_URL}"
-```
+For the YAML-based configuration reference, see [Config File Reference](config.md).

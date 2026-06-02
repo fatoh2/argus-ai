@@ -8,9 +8,11 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
 - **Graceful Degradation**: All connectors handle timeouts and failures gracefully — if a service is unreachable, the LLM receives a structured error and informs the user instead of crashing.
+- **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
+- **Input Validation & Sanitization**: The `/chat` endpoint validates message length (max 4000 characters), strips control characters and null bytes, and rejects empty messages with a `400 Bad Request`.
+- **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
-- **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP to prevent abuse.
 
 ## Demo
 
@@ -78,6 +80,8 @@ Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) for configuration manag
 1. **Environment variables** (highest priority) — set in your shell or a `.env` file
 2. **`config.yaml`** — for non-sensitive defaults and connector endpoint URLs
 
+The `ConfigModule` is registered globally in `app.module.ts` with `isGlobal: true`, making `ConfigService` available to all modules without additional imports.
+
 Key environment variables:
 
 | Variable | Description | Required |
@@ -95,41 +99,46 @@ See [Configuration Reference](docs/configuration.md) for full details.
 
 ## Security Best Practices
 
-- **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks, ensuring the integrity and security of interactions with the LLM and underlying systems.
-- **Input Validation**: The `/chat` endpoint validates message length (max 4000 characters) and strips control characters. Empty messages are rejected with a `400 Bad Request`.
-- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
+- **User Query Sanitization**: All natural language queries from users are rigorously sanitized and validated to prevent prompt injection and other forms of injection attacks. The `/chat` endpoint strips control characters and null bytes before processing.
+- **Input Validation**: The `/chat` endpoint validates message length (max 4000 characters) and strips control characters. Empty messages are rejected with a `400 Bad Request`. A global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` ensures only expected fields are accepted.
+- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring, and a `Retry-After` header is set on `429` responses.
+- **Safe Logging**: All connector error logs automatically redact API keys, bearer tokens, and secrets using a regex pattern before writing to the console. Error logs include connector name, error type, and duration — never credentials.
+- **Graceful Degradation**: All connector methods are wrapped with `withConnectorErrorHandling()` which provides a 10-second timeout, structured error responses (`{ error: "...", data: null }`), and safe logging.
 - **Read-Only Access**: Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor). Ensure that the credentials provided are scoped to the minimum necessary read-only permissions.
-- **Secure Credential Management**: Use environment variables or a secure secret management system (e.g., Kubernetes Secrets, CI/CD secret management).
-- **Log Sanitization**: Error logs automatically redact API keys, bearer tokens, and secrets to prevent credential leakage through error messages.
-- **Connector Timeouts**: All connector calls have a 10-second timeout to prevent hanging on unresponsive services.
+- **Health Checks**: Every connector implements an `isHealthy()` method that verifies connectivity before executing queries. If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
+
+See [Security Best Practices](docs/security.md) for more details.
 
 ## Architecture
 
-Argus AI uses a modular NestJS architecture with the following key components:
-
-- **Connectors Module** (`src/connectors/`): Read-only integrations with external services. All connector methods are wrapped with `withConnectorErrorHandling()` for graceful degradation — on timeout or failure, they return a structured `{ error, data: null }` response instead of throwing.
-- **LLM Module** (`src/llm/`): Google Gemini API integration with tool-use loop.
-- **Chat Module** (`src/chat/`): REST API endpoint with input validation and rate limiting.
-
-## Project Structure
-
 ```
 src/
-  app.module.ts           # Root module
+  app.module.ts           # Root module — registers ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint
   app.service.ts          # Core application service
-  chat/                   # Chat API module
+  main.ts                 # Bootstrap — global ValidationPipe with whitelist
+  chat/                   # Chat API module (REST endpoint)
+    chat.controller.ts    # POST /chat — input sanitization + validation
+    chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
+    chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
+    dto/chat.dto.ts       # ChatDto — message validation (max 4000 chars)
   connectors/             # Read-only connector implementations
+    connectors.module.ts  # Registers and exports all connectors
     utils/
-      connector-error.ts  # Graceful degradation utility
+      connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
     k8s-prometheus.connector.ts
     kubernetes.connector.ts
-    loki.connector.ts
-    argocd.connector.ts
-  llm/                    # LLM integration
-config.example.yaml       # Template config
+    loki.connector.ts     # Loki log querying (LogQL)
+    argocd.connector.ts   # ArgoCD application status
+  llm/                    # LLM integration (Gemini API)
+config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
-## License
+## Development
 
-MIT
+See [Development Guide](docs/development.md) for setup instructions, testing, and how to add new connectors.
+
+## Related Projects
+
+- **argus-infra**: Kubernetes homelab platform (Terraform, Ansible k3s, ArgoCD, Prometheus)
+- **argus-monitor**: Blockchain monitoring SaaS (NestJS, React, PostgreSQL, BullMQ)

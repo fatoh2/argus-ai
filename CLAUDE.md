@@ -10,6 +10,8 @@ optionally argus-monitor's database.
 - **Backend**: NestJS + TypeScript
 - **Frontend**: React embeddable chat component
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
+- **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
+- **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
 - **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
 
 ## Repo Structure
@@ -18,11 +20,18 @@ src/
   app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint
   app.service.ts          # Core application service
-  chat/                   # Chat API module (REST endpoint + React widget)
+  main.ts                 # Bootstrap — global ValidationPipe with whitelist
+  chat/                   # Chat API module (REST endpoint)
+    chat.controller.ts    # POST /chat — input sanitization (strips control chars)
+    chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
+    chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
+    dto/
+      chat.dto.ts         # ChatDto — IsString, MaxLength(4000)
   connectors/
     connectors.module.ts  # Registers and exports all connectors
     utils/
       connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
+      connector-error.spec.ts  # Tests for error handling utility
     k8s-prometheus.connector.ts
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
@@ -71,7 +80,18 @@ export class MyConnector {
 The utility provides:
 - **10-second timeout** (configurable via third parameter)
 - **Structured error responses**: `{ error: "<name> unavailable", data: null }`
-- **Safe logging**: connector name, error type, duration — API keys/tokens auto-redacted
+- **Safe logging**: connector name, error type, duration — API keys/tokens auto-redacted via `sanitizeLog()`
+
+### The `sanitizeLog()` Utility
+
+```typescript
+function sanitizeLog(message: string): string {
+  return message.replace(
+    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
+    '$1***redacted***$1',
+  );
+}
+```
 
 ### Example: Adding a connector to ConnectorsModule
 
@@ -114,6 +134,10 @@ get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connecto
 - **ALWAYS** cap Prometheus queries to 24h range unless explicitly extended
 - **ALWAYS** test connectors with stub/mock responses before integration tests
 - **ALWAYS** use `@nestjs/testing` `Test.createTestingModule` with mocked `ConfigService` for connector tests
+- **ALWAYS** use `ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' })` in the root module
+- **ALWAYS** use `class-validator` DTOs with `@IsString()`, `@MaxLength()` for API input validation
+- **ALWAYS** strip control characters and null bytes from user input before processing
+- **ALWAYS** use `sanitizeLog()` to redact credentials from error logs
 
 ## Adding a New Connector
 1. Create the connector class in `src/connectors/` implementing the `Connector` interface
@@ -143,18 +167,11 @@ Body:
 - What data can Claude now see? (be explicit)
 - Health check implemented? (yes/no)
 - Graceful degradation implemented? (yes/no — wrapped with withConnectorErrorHandling?)
+- Safe logging implemented? (yes/no — credentials redacted from logs?)
+- Input validation implemented? (yes/no — DTO validation + sanitization?)
 
-## Checklist
-- [ ] Tests pass with stub responses
-- [ ] No write operations in connector
-- [ ] config.example.yaml updated
-- [ ] docs/connectors.md updated
-- [ ] No config.yaml committed
-- [ ] All methods wrapped with withConnectorErrorHandling()
+## Testing
+- Unit tests added? (yes/no)
+- Error handling tests included? (yes/no)
+- Log sanitization verified? (yes/no)
 ```
-
-## Escalate to PM when
-- Adding any new data source connector (PM reviews scope + security before merge)
-- Any change to how `GEMINI_API_KEY` is handled
-- Any expansion of what data argus-monitor connector can access
-- Gemini model version change (coordinate with PM on cost impact)

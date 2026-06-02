@@ -9,6 +9,7 @@ All connectors use a shared `withConnectorErrorHandling()` utility that provides
 - **10-second timeout** — if a connector call takes longer than 10 seconds, it returns a structured error instead of hanging
 - **Structured error responses** — on failure, connectors return `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
 - **Safe logging** — error logs include the connector name, error type, and duration, but never API keys, tokens, or secrets (automatically redacted via regex)
+- **Custom timeout** — the third parameter accepts a custom timeout in milliseconds (default 10,000)
 - **Health checks** — every connector implements `isHealthy(): Promise<boolean>` that returns `false` when the connector is unreachable
 
 This means the LLM always receives a predictable response shape and can gracefully handle unavailable services by informing the user rather than crashing.
@@ -23,6 +24,21 @@ interface ConnectorErrorResult<T = null> {
 ```
 
 The LLM context builder checks for this shape to insert appropriate placeholders in its responses.
+
+### Safe Logging
+
+The `sanitizeLog()` utility automatically redacts sensitive information from error logs:
+
+```typescript
+function sanitizeLog(message: string): string {
+  return message.replace(
+    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
+    '$1***redacted***$1',
+  );
+}
+```
+
+This ensures that if an error message contains an API key or bearer token, it is replaced with `***redacted***` before being written to the console.
 
 ## Kubernetes Connector
 
@@ -94,9 +110,10 @@ prometheus:
 **How it works**: Queries Loki using LogQL to retrieve log streams based on labels and time ranges. By default, queries are capped at 500 lines to prevent excessive data retrieval. All methods are wrapped with `withConnectorErrorHandling('loki', ...)` for graceful degradation.
 
 **Available methods**:
-- `isHealthy()` — health check — returns `true` if `queryLogs` succeeds
-- `queryLogs(query)` — execute a LogQL query
-- `getServiceLogs(service, start, end, maxLines?)` — get logs for a specific service, capped at 500 lines by default
+- `isHealthy()` — health check — returns `true` if Loki `/ready` endpoint responds
+- `queryRange(options)` — execute a LogQL range query with full options (query, start, end, limit)
+- `queryLogs(labelSelector, start?, end?, level?, limit?)` — convenience method for querying logs by label selector, with optional level filter
+- `summarizeErrors(hours?, labelSelector?)` — summarize error logs from the last N hours, grouped by source and message
 
 **Configuration**:
 ```yaml
@@ -116,9 +133,10 @@ loki:
 **How it works**: Connects to the ArgoCD API to fetch the status of specified applications, including sync status and health. Authentication is supported via bearer token. All methods are wrapped with `withConnectorErrorHandling('argocd', ...)` for graceful degradation.
 
 **Available methods**:
-- `isHealthy()` — health check — returns `true` if `listApps` succeeds
+- `isHealthy()` — health check — returns `true` if ArgoCD `/api/v1/session/userinfo` responds
 - `getAppStatus(appName)` — fetch sync status, health status, and revision for a specific application
 - `listApps()` — list all applications with their sync and health status
+- `getClusterSummary()` — get a formatted summary of all applications (healthy vs unhealthy)
 
 **Configuration**:
 ```yaml
@@ -134,14 +152,14 @@ argocd:
 
 ## GitHub Actions Connector
 
-**Purpose**: Retrieves information about GitHub Actions workflows and runs.
+**Purpose**: Retrieves information about GitHub Actions workflows and their runs.
 
-**How it works**: Interacts with the GitHub API to fetch details about workflow runs for a given repository and branch.
+**How it works**: Uses the GitHub API to fetch workflow run status, history, and job details for specified repositories. Authentication is via a Personal Access Token (PAT) with the `workflow` scope.
 
 **Available methods**:
-- `isHealthy()` — health check against the GitHub API
-- `getWorkflowRun(owner, repo, workflowId, branch?)` — fetch the latest run for a workflow
-- `listWorkflowRuns(owner, repo, workflowId, limit?)` — list recent workflow runs
+- `isHealthy()` — health check
+- `getWorkflowStatus(repo, branch?)` — get the status of the latest workflow run
+- `getWorkflowHistory(repo, days?)` — get workflow run history for a repository
 
 **Configuration**:
 ```yaml
@@ -150,14 +168,19 @@ github_actions:
 ```
 
 **Example Questions**:
-- "What was the status of the latest 'deploy' workflow run on the 'main' branch of the 'fatoh2/argus-ai' repository?"
-- "List the last 5 workflow runs for the 'build' job in 'fatoh2/argus-monitor'."
+- "What is the status of the latest GitHub Actions workflow for the 'argus-infra' repository?"
+- "Show me the workflow run history for 'argus-monitor' in the last 7 days."
 
-## Argus Monitor Connector (Optional)
+## Argus Monitor Connector
 
-**Purpose**: Integrates with the Argus Monitor platform to fetch alerts and wallet activity.
+**Purpose**: (Optional) Provides access to alerts and wallet activity from the Argus Monitor platform.
 
-**How it works**: Connects to the Argus Monitor database (read-only replica) to retrieve specific data points.
+**How it works**: Connects directly to the Argus Monitor PostgreSQL database (read-only replica) to query alert and wallet activity data.
+
+**Available methods**:
+- `isHealthy()` — health check
+- `getRecentAlerts(userId, hours?)` — get recent alerts for a user
+- `getWalletActivity(walletId, hours?)` — get recent wallet activity
 
 **Configuration**:
 ```yaml
@@ -166,19 +189,9 @@ argus_monitor:
 ```
 
 **Example Questions**:
-- "Show me all alerts triggered in the last 24 hours for 'user-123'."
-- "What is the recent wallet activity for '0xabc...def' in the last 12 hours?"
+- "Do I have any recent alerts from Argus Monitor?"
+- "Show me wallet activity for the last 24 hours."
 
 ## Adding New Connectors
 
-To add a new connector, follow the guidelines in [CLAUDE.md](../CLAUDE.md). Key steps:
-
-1. Create the connector class in `src/connectors/` implementing the `Connector` interface
-2. Use `ConfigService` for configuration (inject via constructor)
-3. Add health check method `isHealthy(): Promise<boolean>`
-4. **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error` for graceful degradation
-5. Register in `src/connectors/connectors.module.ts` (providers + exports)
-6. Add to `config.example.yaml` with placeholder values
-7. Write unit tests with stubbed HTTP responses (see `connector-error.spec.ts` for the error handling pattern)
-8. Update this document with available methods and example questions
-9. **Escalate to PM** — new connectors always require PM review before merging due to security implications
+See the [Development Guide](development.md) for detailed instructions on adding new connectors.
