@@ -16,9 +16,9 @@ This guide provides instructions for setting up your development environment, ru
     ```bash
     bash scripts/setup.sh
     ```
-    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs npm dependencies, and pulls Docker images for the dev stack. After it completes, skip ahead to step 5.
+    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs npm dependencies, and pulls Docker images for the dev stack. After it completes, skip ahead to step 6.
 
-    > **Note**: If you prefer to configure things manually, follow steps 3–5 instead.
+    > **Note**: If you prefer to configure things manually, follow steps 3–7 instead.
 
 3.  **Install dependencies** (manual alternative):
     ```bash

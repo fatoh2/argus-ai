@@ -38,21 +38,21 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
 1.  **Prerequisites**: Ensure you have Node.js (v20+), npm, and Docker installed. The setup script will verify all of these for you.
 
-2.  **One-command setup (recommended)**:
-    ```bash
-    bash scripts/setup.sh
-    ```
-    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs dependencies, and pulls Docker images. After it completes, skip to step 6 to run the app.
-
-    > **Note**: If you prefer to configure things manually, follow steps 3–6 instead.
-
-3.  **Clone the repository** (manual alternative):
+2.  **Clone the repository**:
     ```bash
     git clone https://github.com/fatoh2/argus-ai.git
     cd argus-ai
     ```
 
     > **Note**: The `.gitignore` includes `argus-ai/` to prevent accidental nested clones (e.g., if an automation agent clones the repo inside itself). If you see this directory appear, it is a stray artifact and can be safely deleted.
+
+3.  **One-command setup (recommended)**:
+    ```bash
+    bash scripts/setup.sh
+    ```
+    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs dependencies, and pulls Docker images. After it completes, skip to step 6 to run the app.
+
+    > **Note**: If you prefer to configure things manually, follow steps 4–6 instead.
 
 4.  **Configure your connectors**:
     Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
@@ -99,13 +99,13 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```
     This will start the NestJS backend alone, typically on `http://localhost:3000`. You will need a separate Prometheus and Loki instance.
 
-6.  **Start Querying!**
+7.  **Start Querying!**
     Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
 
     ```bash
     curl -X POST http://localhost:3000/chat \
-    -H "Content-Type: application/json" \
-    -d '{"message": "What is the status of my web-app deployment?"}'
+        -H "Content-Type: application/json" \
+        -d '{"message": "What is the status of my web-app deployment?"}'
     ```
 
     **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
