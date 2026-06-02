@@ -1,4 +1,4 @@
-# CLAUDE.md
+# argus-ai — AI Integration Agent Rules
 
 ## Role
 You build and maintain Argus AI: an AI infrastructure assistant powered by Google Gemini
@@ -128,25 +128,15 @@ import { ArgoCDConnector } from './argocd.connector';
 export class ConnectorsModule {}
 ```
 
+## The Tools Claude Can Call (read-only always)
 ```typescript
-import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
-
-@Injectable()
-export class MyConnector {
-  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
-    return withConnectorErrorHandling('my-connector', async (signal) => {
-      // Actual connector logic
-      // Pass signal to HTTP requests for proper cancellation on timeout
-      return await this.api.fetchData({ signal });
-    });
-  }
-
-  async getOtherData(): Promise<OtherData | ConnectorErrorResult<OtherData>> {
-    return withConnectorErrorHandling('my-connector', async () => {
-      // Logic that doesn't involve HTTP requests or needs a signal
-      return { value: 'some-data' };
-    }, 500
-... (truncated at 6000 chars)</text>
+get_pod_status(namespace: string, label_selector?: string)
+get_prometheus_metric(query: string, start: string, end: string)
+get_loki_logs(service: string, start: string, end: string, level?: string)
+get_argocd_app_status(app_name: string)
+get_recent_github_runs(repo: string, branch?: string)
+get_recent_alerts(user_id: string, hours: number)      // argus-monitor connector
+get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connector
 ```
 
 Let me see the full CLAUDE.md to make sure I don't truncate it:
