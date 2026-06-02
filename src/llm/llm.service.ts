@@ -1,6 +1,6 @@
 import { Injectable, Optional, Inject, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import { GeminiService } from './gemini/gemini.service';
-import { ToolDeclaration } from '@google/generative-ai';
+import { FunctionDeclaration } from '@google/generative-ai';
 
 /**
  * Rough token estimation: ~4 chars per token for English text.
@@ -93,7 +93,7 @@ export class LlmService {
    */
   async runToolUseLoop(
     prompt: string,
-    tools: ToolDeclaration[],
+    tools: FunctionDeclaration[],
     conversationHistory: { role: string; content: string }[] = [],
   ): Promise<string> {
     // --- Token limit guard ---
@@ -182,7 +182,7 @@ export class LlmService {
    */
   private async executeWithTimeout(
     prompt: string,
-    tools: ToolDeclaration[],
+    tools: FunctionDeclaration[],
   ): Promise<string> {
     try {
       const result = await Promise.race([
