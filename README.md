@@ -7,7 +7,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
 - **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
-- **Graceful Degradation**: Every connector call is wrapped with a 10-second timeout and structured error handling. If a connector is unreachable, the LLM sees a clear "unavailable" message and can still answer questions using other available sources.
+- **Graceful Degradation**: All connectors handle timeouts and failures gracefully — if a service is unreachable, the LLM receives a structured error and informs the user instead of crashing.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP to prevent abuse.
@@ -99,17 +99,36 @@ See [Configuration Reference](docs/configuration.md) for full details.
 - **Input Validation**: The `/chat` endpoint validates message length (max 4000 characters) and strips control characters. Empty messages are rejected with a `400 Bad Request`.
 - **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
 - **Read-Only Access**: Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor). Ensure that the credentials provided are scoped to the minimum necessary read-only permissions.
-- **Secure Credential Management**: Use environment variables or a secure secret management system (e.g., Kubernetes Secrets, CI/CD secret management) for all sensitive configuration values.
-- **Sanitized Error Logging**: Connector error logs include the connector name, error type, and duration, but never API keys, tokens, or secrets. Values matching common credential patterns are automatically redacted.
-- **Timeout Protection**: All connector calls are wrapped with a 10-second timeout to prevent hanging on unreachable endpoints.
+- **Secure Credential Management**: Use environment variables or a secure secret management system (e.g., Kubernetes Secrets, CI/CD secret management).
+- **Log Sanitization**: Error logs automatically redact API keys, bearer tokens, and secrets to prevent credential leakage through error messages.
+- **Connector Timeouts**: All connector calls have a 10-second timeout to prevent hanging on unresponsive services.
 
-## Documentation
+## Architecture
 
-- [Connectors](docs/connectors.md) — Full documentation for all connectors and their available methods
-- [Configuration](docs/configuration.md) — Detailed configuration reference
-- [Security](docs/security.md) — Security best practices and deployment guidelines
-- [Development](docs/development.md) — Local development setup and contribution guide
-- [Examples](docs/examples.md) — Example queries and expected AI responses
+Argus AI uses a modular NestJS architecture with the following key components:
+
+- **Connectors Module** (`src/connectors/`): Read-only integrations with external services. All connector methods are wrapped with `withConnectorErrorHandling()` for graceful degradation — on timeout or failure, they return a structured `{ error, data: null }` response instead of throwing.
+- **LLM Module** (`src/llm/`): Google Gemini API integration with tool-use loop.
+- **Chat Module** (`src/chat/`): REST API endpoint with input validation and rate limiting.
+
+## Project Structure
+
+```
+src/
+  app.module.ts           # Root module
+  app.controller.ts       # Health check endpoint
+  app.service.ts          # Core application service
+  chat/                   # Chat API module
+  connectors/             # Read-only connector implementations
+    utils/
+      connector-error.ts  # Graceful degradation utility
+    k8s-prometheus.connector.ts
+    kubernetes.connector.ts
+    loki.connector.ts
+    argocd.connector.ts
+  llm/                    # LLM integration
+config.example.yaml       # Template config
+```
 
 ## License
 

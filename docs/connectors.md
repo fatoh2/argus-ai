@@ -4,14 +4,25 @@ Argus AI integrates with various infrastructure components to provide comprehens
 
 ## Graceful Degradation
 
-All connector methods use a shared error-handling utility that provides:
+All connectors use a shared `withConnectorErrorHandling()` utility that provides:
 
-- **Timeout protection** — every connector call is wrapped with a 10-second timeout. If a connector hangs or is unreachable, it returns a structured error instead of blocking the request.
-- **Structured error responses** — on failure, connectors return a `ConnectorErrorResult<T>` object with shape `{ error: string, data: null }` rather than throwing or returning empty defaults. The LLM context builder checks for this shape and inserts appropriate placeholders.
-- **Sanitized logging** — error logs include the connector name, error type, and duration, but never API keys, tokens, or secrets. Any value matching common credential patterns is redacted automatically.
-- **Health checks** — every connector implements `isHealthy(): Promise<boolean>` that returns `false` when the endpoint is unreachable, without crashing the application.
+- **10-second timeout** — if a connector call takes longer than 10 seconds, it returns a structured error instead of hanging
+- **Structured error responses** — on failure, connectors return `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
+- **Safe logging** — error logs include the connector name, error type, and duration, but never API keys, tokens, or secrets (automatically redacted via regex)
+- **Health checks** — every connector implements `isHealthy(): Promise<boolean>` that returns `false` when the connector is unreachable
 
-This means a single failing connector (e.g., Prometheus is down) will not break queries against other connectors. The LLM will see a clear "Prometheus unavailable" message and can still answer questions using Kubernetes, Loki, or other available sources.
+This means the LLM always receives a predictable response shape and can gracefully handle unavailable services by informing the user rather than crashing.
+
+### ConnectorErrorResult Type
+
+```typescript
+interface ConnectorErrorResult<T = null> {
+  error: string;   // e.g. "loki unavailable"
+  data: T;         // always null on failure
+}
+```
+
+The LLM context builder checks for this shape to insert appropriate placeholders in its responses.
 
 ## Kubernetes Connector
 
@@ -25,9 +36,9 @@ This means a single failing connector (e.g., Prometheus is down) will not break 
 
 **Available methods**:
 - `isHealthy()` — health check against the Kubernetes API
-- `getPodStatus(namespace, labelSelector)` — fetch pod details by namespace and label
-- `getDeploymentStatus(namespace, name)` — fetch a specific deployment's status
-- `getClusterEvents(namespace, hours)` — list recent cluster events
+- `listPods(namespace)` — list pods in a namespace
+- `getPodLogs(podName, namespace)` — get logs for a specific pod
+- `describeDeployment(deploymentName, namespace)` — describe a deployment
 
 **Configuration**:
 ```yaml
@@ -61,23 +72,31 @@ prometheus:
 - "What is the average CPU utilization for the 'web-server' deployment over the last 24 hours?"
 - "Show me the rate of HTTP 5xx errors from the 'api-gateway' service in the last 6 hours."
 
+## K8sPrometheus Connector
+
+**Purpose**: Convenience facade that delegates to both the Kubernetes and Prometheus connectors, wrapping all calls with graceful degradation.
+
+**How it works**: All methods (`listPods`, `getPodLogs`, `describeDeployment`, `queryPrometheus`, `instantQueryPrometheus`, `rangeQueryPrometheus`) are wrapped with `withConnectorErrorHandling('k8s prometheus', ...)`. On failure, they return a `ConnectorErrorResult` instead of throwing.
+
+**Available methods**:
+- `isHealthy()` — returns `true` if `listPods` succeeds
+- `listPods(namespace)` — list pods via KubernetesConnector
+- `getPodLogs(podName, namespace)` — get pod logs via KubernetesConnector
+- `describeDeployment(deploymentName, namespace)` — describe a deployment via KubernetesConnector
+- `queryPrometheus(query)` — execute a PromQL query via PrometheusConnector
+- `instantQueryPrometheus(query)` — execute an instant PromQL query
+- `rangeQueryPrometheus(query, start, end, step)` — execute a range query
+
 ## Loki Connector
 
 **Purpose**: Allows searching and analyzing logs stored in Loki.
 
-**How it works**: Queries Loki using LogQL to retrieve log streams based on labels and time ranges. By default, queries are capped at 500 lines to prevent excessive data retrieval.
+**How it works**: Queries Loki using LogQL to retrieve log streams based on labels and time ranges. By default, queries are capped at 500 lines to prevent excessive data retrieval. All methods are wrapped with `withConnectorErrorHandling('loki', ...)` for graceful degradation.
 
 **Available methods**:
-- `isHealthy()` — health check against Loki's `/ready` endpoint
-- `queryRange(options)` — execute a LogQL range query with start/end time, limit, and direction
-- `queryLogs(labelSelector, start?, end?, level?, limit?)` — convenience method for querying logs by label with optional level filtering
-- `summarizeErrors(hours?, labelSelector?)` — aggregate error logs from the last N hours, grouped by source and message
-
-**Key implementation details**:
-- Time parsing supports ISO 8601 strings and relative formats (`1h`, `30m`, `15s`)
-- Limit is capped at 500 lines maximum
-- Timestamps are converted to nanosecond precision for Loki's API
-- Default time range is the last 1 hour if not specified
+- `isHealthy()` — health check — returns `true` if `queryLogs` succeeds
+- `queryLogs(query)` — execute a LogQL query
+- `getServiceLogs(service, start, end, maxLines?)` — get logs for a specific service, capped at 500 lines by default
 
 **Configuration**:
 ```yaml
@@ -94,19 +113,12 @@ loki:
 
 **Purpose**: Monitors the status of your ArgoCD applications.
 
-**How it works**: Connects to the ArgoCD API to fetch the status of specified applications, including sync status and health. Authentication is supported via bearer token.
+**How it works**: Connects to the ArgoCD API to fetch the status of specified applications, including sync status and health. Authentication is supported via bearer token. All methods are wrapped with `withConnectorErrorHandling('argocd', ...)` for graceful degradation.
 
 **Available methods**:
-- `isHealthy()` — health check against ArgoCD's `/api/v1/session/userinfo` endpoint
+- `isHealthy()` — health check — returns `true` if `listApps` succeeds
 - `getAppStatus(appName)` — fetch sync status, health status, and revision for a specific application
 - `listApps()` — list all applications with their sync and health status
-- `getClusterSummary()` — get a human-readable summary of all applications, highlighting out-of-sync and unhealthy apps
-
-**Key implementation details**:
-- Supports both HTTP and HTTPS (auto-detected from URL)
-- Configurable via `argocd.url` and `argocd.token` environment variables
-- Token is optional — if not provided, requests are made without authentication
-- 10-second request timeout
 
 **Configuration**:
 ```yaml
@@ -161,12 +173,12 @@ argus_monitor:
 
 To add a new connector, follow the guidelines in [CLAUDE.md](../CLAUDE.md). Key steps:
 
-1. Create the connector class in `src/connectors/` implementing the `Connector` interface.
-2. Add a health check method `isHealthy(): Promise<boolean>`.
-3. Use `ConfigService` for configuration (inject via constructor).
-4. **Wrap all public methods with `withConnectorErrorHandling()`** from `./utils/connector-error` to ensure graceful degradation with timeout and structured error responses.
-5. Register the connector in `src/connectors/connectors.module.ts` (add to `providers` and `exports`).
-6. Update `config.example.yaml` with placeholder values.
-7. Write unit tests with stubbed HTTP responses (see `loki.connector.spec.ts` and `argocd.connector.spec.ts` for examples).
-8. Update this document with available methods and example questions.
-9. **Escalate to PM**: New connectors always require PM review before merging due to security implications.
+1. Create the connector class in `src/connectors/` implementing the `Connector` interface
+2. Use `ConfigService` for configuration (inject via constructor)
+3. Add health check method `isHealthy(): Promise<boolean>`
+4. **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error` for graceful degradation
+5. Register in `src/connectors/connectors.module.ts` (providers + exports)
+6. Add to `config.example.yaml` with placeholder values
+7. Write unit tests with stubbed HTTP responses (see `connector-error.spec.ts` for the error handling pattern)
+8. Update this document with available methods and example questions
+9. **Escalate to PM** — new connectors always require PM review before merging due to security implications

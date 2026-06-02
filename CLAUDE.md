@@ -21,7 +21,10 @@ src/
   chat/                   # Chat API module (REST endpoint + React widget)
   connectors/
     connectors.module.ts  # Registers and exports all connectors
+    utils/
+      connector-error.ts  # Graceful degradation utility (timeout + structured errors + log sanitization)
     k8s-prometheus.connector.ts
+    kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
   llm/                    # Gemini LLM integration
@@ -36,6 +39,39 @@ All connectors:
 - Implement `isHealthy(): Promise<boolean>` for health checks
 - Are registered in `ConnectorsModule` (providers + exports)
 - Are strictly read-only
+- **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
+
+### Graceful Degradation Pattern
+
+Every connector method must use `withConnectorErrorHandling`:
+
+```typescript
+import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
+
+@Injectable()
+export class MyConnector {
+  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
+    return withConnectorErrorHandling('my-connector', async () => {
+      // Actual connector logic
+      return await this.api.fetchData();
+    });
+  }
+
+  async isHealthy(): Promise<boolean> {
+    try {
+      const result = await this.getData();
+      return !(result && typeof result === 'object' && 'error' in result);
+    } catch {
+      return false;
+    }
+  }
+}
+```
+
+The utility provides:
+- **10-second timeout** (configurable via third parameter)
+- **Structured error responses**: `{ error: "<name> unavailable", data: null }`
+- **Safe logging**: connector name, error type, duration — API keys/tokens auto-redacted
 
 ### Example: Adding a connector to ConnectorsModule
 
@@ -43,12 +79,13 @@ All connectors:
 // src/connectors/connectors.module.ts
 import { Module } from '@nestjs/common';
 import { K8sPrometheusConnector } from './k8s-prometheus.connector';
+import { KubernetesConnector } from './kubernetes.connector';
 import { LokiConnector } from './loki.connector';
 import { ArgoCDConnector } from './argocd.connector';
 
 @Module({
-  providers: [K8sPrometheusConnector, LokiConnector, ArgoCDConnector],
-  exports: [K8sPrometheusConnector, LokiConnector, ArgoCDConnector],
+  providers: [K8sPrometheusConnector, KubernetesConnector, LokiConnector, ArgoCDConnector],
+  exports: [K8sPrometheusConnector, KubernetesConnector, LokiConnector, ArgoCDConnector],
 })
 export class ConnectorsModule {}
 ```
@@ -64,7 +101,7 @@ get_recent_alerts(user_id: string, hours: number)      // argus-monitor connecto
 get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connector
 ```
 
-## Non-Negotiable Rules
+## Security Rules (strictest in the project)
 - **NEVER** add write operations to any connector — every connector is read-only
 - **NEVER** let Claude suggest destructive shell commands in its output — filter them
 - **NEVER** store user query history or log content in plaintext — encrypt at rest
@@ -72,6 +109,7 @@ get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connecto
 - **NEVER** commit `config.yaml` (contains real endpoint URLs) — only `config.example.yaml`
 - **ALWAYS** add a health check to every connector before using it
   - If endpoint unreachable: return graceful error, not a crash
+- **ALWAYS** wrap connector methods with `withConnectorErrorHandling()` for graceful degradation
 - **ALWAYS** cap Loki log queries to 500 lines max to avoid context overflow
 - **ALWAYS** cap Prometheus queries to 24h range unless explicitly extended
 - **ALWAYS** test connectors with stub/mock responses before integration tests
@@ -81,21 +119,38 @@ get_wallet_activity(wallet_id: string, hours: number)  // argus-monitor connecto
 1. Create the connector class in `src/connectors/` implementing the `Connector` interface
 2. Use `ConfigService` for configuration (inject via constructor)
 3. Add health check method `isHealthy(): Promise<boolean>`
-4. Register in `src/connectors/connectors.module.ts` (providers + exports)
-5. Add to `config.example.yaml` with placeholder values
-6. Write unit tests with stubbed HTTP responses (see `loki.connector.spec.ts` for pattern)
-7. Update `docs/connectors.md` with available methods and example questions
-8. Escalate to PM — new connectors always require PM review before merging
+4. **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
+5. Register in `src/connectors/connectors.module.ts` (providers + exports)
+6. Add to `config.example.yaml` with placeholder values
+7. Write unit tests with stubbed HTTP responses (see `connector-error.spec.ts` for error handling pattern)
+8. Update `docs/connectors.md` with available methods and example questions
+9. Escalate to PM — new connectors always require PM review before merging
 
 ## PR Format
 ```
-Title: [type(scope)] short description
+Title: [ai] short description
 
 Body:
-- What changed and why
-- How to test
-- Any risks or migration steps
-- Checklist: tests passing, CLAUDE.md rules followed, no secrets committed
+## What changed
+<which connector or feature>
+
+## Example questions now answerable
+- "..."
+- "..."
+
+## Security review
+- Is this connector truly read-only? (yes/no — explain)
+- What data can Claude now see? (be explicit)
+- Health check implemented? (yes/no)
+- Graceful degradation implemented? (yes/no — wrapped with withConnectorErrorHandling?)
+
+## Checklist
+- [ ] Tests pass with stub responses
+- [ ] No write operations in connector
+- [ ] config.example.yaml updated
+- [ ] docs/connectors.md updated
+- [ ] No config.yaml committed
+- [ ] All methods wrapped with withConnectorErrorHandling()
 ```
 
 ## Escalate to PM when

@@ -53,6 +53,13 @@ The Kubernetes connector can operate in two modes:
     -   Set the `KUBECONFIG_PATH` environment variable to the path of your kubeconfig file (e.g., `~/.kube/config`).
     -   Ensure the context in your kubeconfig file is correctly configured to access your target cluster.
 
+**Available Methods** (all wrapped with graceful degradation):
+
+- `isHealthy()` — Health check
+- `listPods(namespace)` — List pods in a namespace
+- `getPodLogs(podName, namespace)` — Get logs for a specific pod
+- `describeDeployment(deploymentName, namespace)` — Describe a deployment
+
 ### Prometheus Connector Setup
 
 1.  **URL Configuration**: Set the `PROMETHEUS_URL` environment variable to the base URL of your Prometheus instance.
@@ -65,12 +72,11 @@ The Kubernetes connector can operate in two modes:
     -   Example: `LOKI_URL=http://localhost:3100`
     -   Similar to Prometheus, if Loki requires authentication, consider using a reverse proxy.
 
-**Available Methods**:
+**Available Methods** (all wrapped with graceful degradation):
 
-- `isHealthy()` — Health check via `/ready` endpoint
-- `queryRange(options)` — Execute a LogQL range query (limit capped at 500)
-- `queryLogs(labelSelector, start?, end?, level?, limit?)` — Query logs for a specific label selector
-- `summarizeErrors(hours?, labelSelector?)` — Summarize error logs from the last N hours
+- `isHealthy()` — Health check
+- `queryLogs(query)` — Execute a LogQL query
+- `getServiceLogs(service, start, end, maxLines?)` — Get logs for a specific service (capped at 500 lines)
 
 ### ArgoCD Connector Setup
 
@@ -80,12 +86,11 @@ The Kubernetes connector can operate in two modes:
     -   Set the `ARGOCD_AUTH_TOKEN` environment variable with a valid token. This token should have read-only access to the applications you wish to monitor.
     -   You can generate an ArgoCD authentication token via the ArgoCD CLI or UI.
 
-**Available Methods**:
+**Available Methods** (all wrapped with graceful degradation):
 
-- `isHealthy()` — Health check via `/api/v1/session/userinfo`
+- `isHealthy()` — Health check
 - `getAppStatus(appName)` — Get sync/health status for a specific application
 - `listApps()` — List all applications with their status
-- `getClusterSummary()` — Get a human-readable cluster health summary
 
 ### GitHub Actions Connector Setup
 
@@ -106,15 +111,18 @@ The Kubernetes connector can operate in two modes:
 Argus AI is designed to handle various operational challenges gracefully:
 
 - **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
-- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
+- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector methods are wrapped with `withConnectorErrorHandling()` which provides:
+  - **10-second timeout** — prevents hanging on unresponsive services
+  - **Structured error responses** — returns `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
+  - **Safe logging** — error logs include connector name, error type, and duration; API keys and tokens are automatically redacted
 - **Empty/Null/Large Responses**:
-    - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
-    - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
+    -   **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
+    -   **Large Data Volumes**: Strategies like pagination, sampling, and summarization will be employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
 
 ## Performance Considerations
 
-- **Optimizing Queries**: When interacting with external systems like Prometheus and Loki, it's recommended to specify precise time ranges and aggressive filtering in your natural language queries to minimize the data volume retrieved. This directly impacts response times and resource usage.
-- **LLM Processing**: The time taken for LLM processing is directly proportional to the complexity and volume of the data provided. Efficient data retrieval and summarization are key to maintaining responsiveness.
+-   **Optimizing Queries**: When interacting with external systems like Prometheus and Loki, it's recommended to specify precise time ranges and aggressive filtering in your natural language queries to minimize the data volume retrieved. This directly impacts response times and resource usage.
+-   **LLM Processing**: The time taken for LLM processing is directly proportional to the complexity and volume of the data provided. Efficient data retrieval and summarization are key to maintaining responsiveness.
 
 ## Example `config.example.yaml`
 
@@ -122,9 +130,9 @@ This section provides a full example of the `config.example.yaml` structure.
 Remember to copy this to `config.yaml` and fill in your actual values.
 
 ```yaml
-claude:
-  api_key: "${ANTHROPIC_API_KEY}"
-  model: "claude-3-sonnet-20240229"
+gemini:
+  api_key: "${GEMINI_API_KEY}"
+  model: "gemini-2.0-flash"
 
 kubernetes:
   kubeconfig_path: "~/.kube/config"

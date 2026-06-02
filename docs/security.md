@@ -40,6 +40,13 @@ This document outlines the security considerations and best practices for deploy
 - Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
 - Ensure that the credentials provided to Argus AI (e.g., Kubernetes service accounts, GitHub tokens) are scoped to the minimum necessary read-only permissions.
 
+### Graceful Degradation with Safe Error Handling
+- All connector methods are wrapped with `withConnectorErrorHandling()` which provides:
+  - **10-second timeout** — prevents hanging on unresponsive services
+  - **Structured error responses** — returns `{ error: "<name> unavailable", data: null }` instead of throwing exceptions
+  - **Log sanitization** — error logs automatically redact API keys, bearer tokens, and secrets using a regex pattern before writing to the console
+- This ensures that even when a connector fails, no sensitive credentials are leaked in logs.
+
 ### Health Checks
 - Every connector implements an `isHealthy()` method that verifies connectivity before executing queries.
 - If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
@@ -70,7 +77,18 @@ This document outlines the security considerations and best practices for deploy
 - The underlying implementation considers rate limiting for external API calls to prevent overwhelming connected services.
 - Caching mechanisms may be employed for frequently requested, non-sensitive data to improve performance and reduce external API load.
 
-## 4. Deployment Security
+## 4. Log Security
+
+### Automatic Credential Redaction
+- The `withConnectorErrorHandling()` utility includes a `sanitizeLog()` function that automatically redacts sensitive patterns from error messages before they are written to logs:
+  - Bearer tokens (e.g., `Bearer sk-1234...`)
+  - API keys (e.g., `api_key=abc123...`)
+  - Authentication tokens (e.g., `token: ghp_xxxx...`)
+  - Secrets (e.g., `secret: my-secret-value...`)
+- Redacted values are replaced with `***redacted***` in log output.
+- This prevents accidental credential leakage through error messages, stack traces, or connection failures.
+
+## 5. Deployment Security
 
 ### Principle of Least Privilege
 - Deploy Argus AI with the principle of least privilege. Ensure its runtime environment (e.g., Kubernetes Pods) has only the necessary permissions and access to resources.
