@@ -44,7 +44,7 @@ test-local: ## Boot stack, run tsc + tests, hit /health endpoint
 	    exit 1; \
 	  fi; \
 	  sleep 2; \
-	  i=`expr $$i + 1`; \
+	  i=$$(($$i + 1)); \
 	done
 	npx tsc --noEmit || { $(DOCKER_COMPOSE) down -v; exit 1; }
 	npm test || { $(DOCKER_COMPOSE) down -v; exit 1; }

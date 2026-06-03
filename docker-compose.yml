@@ -10,12 +10,14 @@ services:
       start_period: 10s
 
   argus-ai:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "3000:3000"
     env_file: .env
     environment:
-      NODE_ENV: production
+      NODE_ENV: ${NODE_ENV:-development}
       REDIS_URL: redis://redis:6379
     depends_on:
       redis:
