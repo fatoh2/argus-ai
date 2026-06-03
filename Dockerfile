@@ -1,15 +1,16 @@
 FROM node:20-alpine AS builder
 WORKDIR /usr/src/app
-COPY package*.json ./ 
-RUN npm install
+COPY package*.json ./
+RUN npm ci
 COPY . .
 RUN npm run build
 
 FROM node:20-alpine
+RUN apk add --no-cache curl
 WORKDIR /usr/src/app
 COPY --from=builder /usr/src/app/dist ./dist
 COPY package*.json ./
-RUN npm install --only=production
+RUN npm ci --only=production && npm cache clean --force
 
 EXPOSE 3000
 CMD [ "node", "dist/main" ]

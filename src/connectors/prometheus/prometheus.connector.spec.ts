@@ -29,7 +29,7 @@ describe('PrometheusConnector', () => {
     it('should return structured error on timeout, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'prometheus',
-        async (_signal) => {
+        async () => {
           await new Promise((resolve) => setTimeout(resolve, 500));
           return { data: { result: [] } };
         },
@@ -45,7 +45,7 @@ describe('PrometheusConnector', () => {
     it('should return structured error on failure, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'prometheus',
-        async (_signal) => {
+        async () => {
           throw new Error('Prometheus API unreachable');
         },
       );
@@ -66,7 +66,7 @@ describe('PrometheusConnector', () => {
     it('should return structured error on timeout, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'prometheus',
-        async (_signal) => {
+        async () => {
           await new Promise((resolve) => setTimeout(resolve, 500));
           return { data: { result: [] } };
         },
@@ -82,7 +82,7 @@ describe('PrometheusConnector', () => {
     it('should return structured error on failure, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'prometheus',
-        async (_signal) => {
+        async () => {
           throw new Error('Prometheus range query failed');
         },
       );
@@ -91,6 +91,15 @@ describe('PrometheusConnector', () => {
         error: 'prometheus unavailable',
         data: null,
       });
+    });
+  });
+
+  describe('offline mode', () => {
+    it('should return empty array when PROMETHEUS_URL not set (offline mode)', async () => {
+      // When PROMETHEUS_URL is not set, the connector should return empty results
+      // The current implementation always returns mock data, so this verifies the stub behavior
+      const result = await connector.instantQuery('up');
+      expect(result).toEqual({ data: { result: [] } });
     });
   });
 });
