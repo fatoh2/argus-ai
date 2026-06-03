@@ -29,19 +29,22 @@ Here's a list of environment variables used:
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | **Yes** | — |
-| `DEEPSEEK_MODEL` | DeepSeek model override (optional) | No | `deepseek-chat` |
-| `DEEPSEEK_URL` | DeepSeek API endpoint override (optional) | No | `https://api.deepseek.com/chat/completions` |
-| `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No | — |
+| `DEEPSEEK_URL` | DeepSeek API endpoint | No | `https://api.deepseek.com/chat/completions` |
+| `PORT` | HTTP server port | No | `3000` |
+| `NODE_ENV` | Environment (development/production) | No | `development` |
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | No | `30000` |
 | `LLM_MAX_TOKENS` | Maximum estimated tokens before oldest history is truncated | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retry attempts on 5xx LLM server errors | No | `1` |
-| `KUBECONFIG_PATH` | Path to your Kubernetes kubeconfig file | No | In-cluster config |
-| `PROMETHEUS_URL` | URL of your Prometheus instance | No | `http://localhost:9090` |
-| `LOKI_URL` | URL of your Loki instance | No | `http://localhost:3100` |
-| `ARGOCD_URL` | URL of your ArgoCD instance | No | `https://localhost:8080` |
-| `ARGOCD_AUTH_TOKEN` | Authentication token for ArgoCD | No | — |
+| `REDIS_URL` | Redis connection string for queue/job processing | **Yes** | `redis://localhost:6379` |
+| `PROMETHEUS_URL` | URL of your Prometheus instance | No | (empty — offline/stub mode) |
+| `LOKI_URL` | URL of your Loki instance | No | (empty — offline/stub mode) |
+| `ARGOCD_URL` | URL of your ArgoCD instance | No | (empty — offline/stub mode) |
+| `ARGOCD_TOKEN` | Authentication token for ArgoCD | No | (empty — offline/stub mode) |
+| `KUBECONFIG` | Path to your Kubernetes kubeconfig file | No | (empty — in-cluster config) |
 | `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No | — |
 | `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
+
+> **Note**: Connector URLs (`PROMETHEUS_URL`, `LOKI_URL`, `ARGOCD_URL`) default to empty strings. When left empty, the corresponding connectors operate in offline/stub mode and return structured errors instead of crashing. This allows the app to start and serve chat requests even when no infrastructure is connected.
 
 ## LLM Configuration
 
@@ -96,10 +99,10 @@ The Kubernetes connector can operate in two modes:
 
 1.  **In-cluster (Recommended for Production)**: When Argus AI is deployed inside a Kubernetes cluster, it will automatically use the service account credentials assigned to its pod.
     -   Ensure the service account has appropriate read-only permissions (e.g., `get`, `list`, `watch` for pods, deployments, events).
-    -   **Do not set `KUBECONFIG_PATH`** in your `config.yaml` or environment variables if deploying in-cluster.
+    -   **Do not set `KUBECONFIG`** in your environment variables if deploying in-cluster.
 
 2.  **Out-of-cluster (Recommended for Local Development)**: For local development, you can point Argus AI to an existing kubeconfig file.
-    -   Set the `KUBECONFIG_PATH` environment variable or add it to your `config.yaml`.
+    -   Set the `KUBECONFIG` environment variable to the path of your kubeconfig file.
     -   The path supports `~` expansion and environment variable references (e.g., `${HOME}/.kube/config`).
 
 **Available Methods** (all wrapped with graceful degradation):
@@ -121,25 +124,10 @@ The Kubernetes connector can operate in two modes:
 2.  Set the `LOKI_URL` environment variable or add it to your `config.yaml`.
 3.  If your Loki instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
-**Available Methods** (all wrapped with graceful degradation):
-
-- `isHealthy()` — Health check
-- `queryLogs(labelSelector, start?, end?, level?, limit?)` — Execute a LogQL query for a specific label selector
-- `queryRange(options)` — Execute a LogQL range query with full options (query, start, end, limit)
-- `summarizeErrors(hours?, labelSelector?)` — Summarize error logs from the last N hours
-
 ### ArgoCD Connector Setup
 
 1.  Ensure your ArgoCD instance is accessible from where Argus AI is running.
-2.  Generate an ArgoCD authentication token with appropriate read-only permissions.
-3.  Set the `ARGOCD_URL` and `ARGOCD_AUTH_TOKEN` environment variables or add them to your `config.yaml`.
-
-**Available Methods** (all wrapped with graceful degradation):
-
-- `isHealthy()` — Health check
-- `getAppStatus(appName)` — Get sync/health status for a specific application
-- `listApps()` — List all applications with their status
-- `getClusterSummary()` — Get a summary of all applications (healthy vs unhealthy)
+2.  Set the `ARGOCD_URL` and `ARGOCD_TOKEN` environment variables or add them to your `config.yaml`.
 
 ### GitHub Actions Connector Setup
 
@@ -148,28 +136,15 @@ The Kubernetes connector can operate in two modes:
 
 ### Argus Monitor Connector Setup
 
-1.  Ensure you have a running Argus Monitor instance with a PostgreSQL database.
+1.  Ensure you have a read-only replica of the Argus Monitor PostgreSQL database.
 2.  Set the `ARGUS_MONITOR_DB_URL` environment variable or add it to your `config.yaml`.
-3.  The connector uses a read-only connection to query alerts and wallet activity.
 
-## Error Handling and Resilience
+## Redis Configuration
 
-Argus AI is designed to handle various operational challenges gracefully:
+Redis is required for queue/job processing. The `docker-compose.yml` includes a Redis 7 service with healthcheck. When running outside Docker, set `REDIS_URL` to point to your Redis instance:
 
-- **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
-- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** (using AbortController to cancel the underlying HTTP request) via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
-- **LLM Error Resilience**:
-  - **30-second hard timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`. Timeout errors are NOT retried.
-  - **Automatic retry** — on 5xx server errors, the call is retried once (configurable via `LLM_MAX_RETRIES`) before returning `502 Bad Gateway`.
-  - **Token limit guard** — prompts exceeding 50k estimated tokens (configurable via `LLM_MAX_TOKENS`) truncate oldest history first.
-  - **Safe logging** — the LLM service never logs full prompt or response content; all log output is sanitized via `sanitizeForLog()`.
-- **Empty/Null/Large Responses**:
-  - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
-  - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
-- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
-- **Input Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
+```bash
+REDIS_URL=redis://localhost:6379
+```
 
-## See Also
-
-- [Config File Reference](config.md) — detailed `config.yaml` structure
-- [Development Guide](development.md) — local setup and project structure
+The app waits for Redis to be healthy before starting (when using Docker Compose). If Redis is unavailable, the app will fail to start.

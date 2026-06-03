@@ -33,14 +33,18 @@ This guide provides instructions for setting up your development environment, ru
     make help    # Show all available commands
     make up      # Start Docker dev stack + NestJS watch mode
     make down    # Stop Docker dev stack
+    make clean   # Stop and remove all containers, networks, and volumes
     make check   # Type-check + lint (tsc --noEmit && npm run lint)
-    make test    # Run tests (npm test)
+    make test    # Run tests (jest --forceExit)
+    make test-local  # Boot full stack, run tsc + tests, hit /health endpoint
     make chat MSG="hello"  # Send a message to the chat API
     make health  # Check LLM health endpoint (GET /health/llm)
     make logs    # Tail Docker logs
     ```
 
     The `make up` command runs `docker compose -f docker-compose.dev.yml up -d` followed by `npm run start:dev`, so it starts the full observability stack and the NestJS app in one step.
+
+    The `make test-local` command boots the production `docker-compose.yml` stack (Redis + argus-ai), waits for the `/health` endpoint to respond, runs `tsc --noEmit`, runs `npm test`, then tears everything down. This is the gate for CI — do not open a PR if `make test-local` fails.
 
     > **Prerequisite**: `make` is typically pre-installed on Linux and macOS. Verify with `make --version`. If missing, install via `sudo apt-get install -y build-essential` (Linux) or Xcode Command Line Tools (macOS).
 
@@ -61,6 +65,7 @@ This guide provides instructions for setting up your development environment, ru
 
 6.  **Run Locally with Docker Compose**:
 
+    **Option A — Dev stack (observability + hot reload)**:
     The `docker-compose.dev.yml` file provides a complete local observability stack so you can test connectors without a real Kubernetes cluster.
 
     ```bash
@@ -80,6 +85,9 @@ This guide provides instructions for setting up your development environment, ru
 
     **Verify the stack is running**:
     ```bash
+    # App health
+    curl http://localhost:3000/health
+
     # Prometheus
     curl http://localhost:9090/-/healthy
 
@@ -102,23 +110,106 @@ This guide provides instructions for setting up your development environment, ru
     # Or use: make down
     ```
 
+    **Option B — Production stack (Redis + argus-ai)**:
+    The `docker-compose.yml` file provides the production stack with Redis for queue/job processing.
+
+    ```bash
+    docker compose up -d
+    ```
+
+    This starts:
+
+    | Service | Image | Port | Purpose |
+    |---------|-------|------|---------|
+    | redis | redis:7 | 6379 | Queue/job processing backend |
+    | argus-ai | local build | 3000 | NestJS app with healthcheck |
+
+    The app waits for Redis to be healthy before starting. Both services have Docker healthchecks configured.
+
+    **Verify**:
+    ```bash
+    curl http://localhost:3000/health
+    # {"status":"ok"}
+    ```
+
+    **Stop**:
+    ```bash
+    docker compose down
+    # Or use: make clean  (removes volumes too)
+    ```
+
 7.  **Run Locally without Docker (Node.js only)**:
 
     To start just the NestJS backend without the observability stack:
     ```bash
     npm run start:dev
     ```
-    The backend will run on `http://localhost:3000`. You will need a separate Prometheus and Loki instance (or mock their responses).
+    The backend will run on `http://localhost:3000`. You will need a separate Redis, Prometheus, and Loki instance (or mock their responses).
 
     > **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. During development, you can test this by sending 21 requests within 60 seconds — the 21st should return `429 Too Many Requests` with a `Retry-After` header. Rate limit hits are logged with a hashed IP and timestamp.
+
+## Testing
+
+Argus AI uses **Jest** with `ts-jest` for testing. Tests are co-located with source files as `*.spec.ts` files.
+
+### Running Tests
+
+```bash
+# Run all tests
+make test
+# or
+npm test
+
+# Run with coverage
+npm run test:cov
+
+# Run in watch mode
+npm run test:watch
+```
+
+### Integration Tests
+
+Integration tests are in `src/chat/chat.integration.spec.ts`. They boot the full Docker stack, hit the `/health` endpoint, and validate chat input validation end-to-end.
+
+To run integration tests locally:
+```bash
+make test-local
+```
+
+This command:
+1. Boots `docker-compose.yml` (Redis + argus-ai)
+2. Waits for the `/health` endpoint to respond (up to 60s)
+3. Runs `tsc --noEmit`
+4. Runs `npm test`
+5. Tears down all containers and volumes
+
+### Test Files
+
+| File | Type | What it tests |
+|---|---|---|
+| `src/chat/chat.integration.spec.ts` | Integration | `GET /health`, `POST /chat` validation (empty, too long, missing body) |
+| `src/llm/deepseek/deepseek.service.spec.ts` | Unit | DeepSeek API payload building, success/error responses, history inclusion |
+| `src/llm/llm.service.spec.ts` | Unit | LLM service tool-use loop, timeout, retry, token guard |
+| `src/llm/llm.controller.spec.ts` | Unit | LLM health check endpoint |
+| `src/connectors/utils/connector-error.spec.ts` | Unit | Graceful degradation utility (timeout, error handling, log sanitization) |
+| `src/connectors/kubernetes.connector.spec.ts` | Unit | Kubernetes connector methods |
+| `src/connectors/prometheus/prometheus.connector.spec.ts` | Unit | Prometheus connector methods |
+
+### `--forceExit`
+
+The `test` script uses `jest --forceExit` to handle NestJS open handles that persist after integration tests complete. This is safe because all tests are self-contained and clean up after themselves.
 
 ## Project Structure
 
 ```
-scripts/
-  setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
-Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
+.dockerignore              # Prevents node_modules, .env, dist from entering Docker images
+docker-compose.yml         # Production stack: Redis + argus-ai with healthchecks
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
+Dockerfile                 # Multi-stage build (npm ci, curl for healthcheck, cache clean)
+.env.example               # Template — copy to .env, never commit .env
+scripts/
+  setup.sh                 # One-command local setup (prerequisites, .env, deps, Docker images)
+Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
 docker/
   prometheus/
     prometheus.yml         # Prometheus config — scrapes itself + argus-ai
@@ -132,191 +223,60 @@ docker/
 
 src/
   app.module.ts           # Root module — registers ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
-  app.controller.ts       # Health check endpoint
+  app.controller.ts       # GET /health + GET /health/llm endpoints
   app.service.ts          # Core application service
   main.ts                 # Bootstrap — global ValidationPipe with whitelist + forbidNonWhitelisted
   chat/                   # Chat API module (REST endpoint)
-    chat.controller.ts    # POST /chat — input sanitization (strips control chars) + validation
+    chat.controller.ts    # POST /chat — input sanitization (strips control chars)
     chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
-    chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging + Retry-After header
+    chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
     dto/
-      chat.dto.ts         # ChatDto — message validation (IsString, MaxLength 4000)
-  connectors/             # Read-only connector implementations
+      chat.dto.ts         # ChatDto — IsString, MaxLength(4000)
+    chat.integration.spec.ts  # Integration tests (boots stack, hits /health, validates chat)
+  connectors/
     connectors.module.ts  # Registers and exports all connectors
     utils/
       connector-error.ts  # Graceful degradation utility (timeout + AbortController + structured errors + log sanitization)
       connector-error.spec.ts  # Tests for error handling utility
     k8s-prometheus.connector.ts
     kubernetes.connector.ts
-    loki.connector.ts     # Loki log querying (LogQL)
-    argocd.connector.ts   # ArgoCD application status
+    loki.connector.ts     # LogQL query wrapper
+    argocd.connector.ts   # ArgoCD API client
   llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
-    llm.module.ts         # LlmModule — imports GeminiModule, registers LlmService and LlmController
-
-    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, 50k token guard, health check, error mapping
+    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
+    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
-    llm.controller.ts     # POST /llm/run-tool-use-loop + GET /health/llm — LLM health check endpoint
+    llm.controller.ts     # GET /health/llm — LLM health check endpoint
     llm.controller.spec.ts# Tests for LlmController
     deepseek/             # DeepSeek V3 API client (primary LLM)
+      deepseek.service.ts
+      deepseek.service.spec.ts  # Unit tests for DeepSeek API client
     gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
-.env.example              # Template — copy to .env, never commit .env with secrets
 ```
 
-## Configuration Architecture
+## Adding a New Feature
 
-Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) for configuration management:
+1.  Create a feature branch from `develop`:
+    ```bash
+    git checkout develop
+    git checkout -b feature/issue-{number}-{short-description}
+    ```
 
-- `ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' })` is registered in `app.module.ts`
-- All connectors inject `ConfigService` to read their configuration
-- Settings are loaded from environment variables (highest priority) and `config.yaml` (defaults)
-- The `isGlobal: true` flag means any module can inject `ConfigService` without importing `ConfigModule`
+2.  Implement your changes following the patterns in [CLAUDE.md](../CLAUDE.md).
 
-### How Connectors Use ConfigService
+3.  Write tests — co-locate `*.spec.ts` files next to source files.
 
-```typescript
-@Injectable()
-export class LokiConnector {
-  constructor(private configService: ConfigService) {
-    this.baseUrl = this.configService.get<string>('loki.url', 'http://localhost:3100');
-  }
-}
-```
+4.  Verify everything passes:
+    ```bash
+    make check    # tsc --noEmit + lint
+    make test     # jest --forceExit
+    ```
 
-## LLM Service Architecture
+5.  Open a PR to `develop`.
 
-The `LlmService` is the core LLM integration layer. It wraps the DeepSeek V3 API (primary) with:
+## Docker Build Notes
 
-### Timeout Protection
-
-Uses `Promise.race` between the DeepSeek call and a timeout promise. If the call exceeds `LLM_TIMEOUT_MS` (default 30s), it rejects with `504 Gateway Timeout`. Timeout errors are NOT retried — they fail fast.
-
-### Token Limit Guard
-
-The `truncateHistory()` function estimates token count using `Math.ceil(text.length / 4)` and removes oldest messages first when the total exceeds `LLM_MAX_TOKENS` (default 50k).
-
-### Retry Logic
-
-On 5xx server errors, the call is retried up to `LLM_MAX_RETRIES` times (default 1). Non-retryable errors (4xx, auth failures, rate limits) fail immediately.
-
-### Error Classification
-
-The `mapErrorToHttpException()` method maps errors to appropriate HTTP status codes:
-
-| Error Type | HTTP Status |
-|---|---|
-| Timeout | `504 Gateway Timeout` |
-| Rate limit / quota | `429 Too Many Requests` |
-| Auth failure | `401 Unauthorized` |
-| Server error (retries exhausted) | `502 Bad Gateway` |
-| Generic | `502 Bad Gateway` |
-
-### Health Check
-
-`checkHealth()` sends a minimal prompt (`"Respond with just: ok"`) with a 10s internal timeout. Returns `{ ok: boolean, latencyMs: number }`. On failure, `ok` is `false` — the error is caught gracefully and never thrown.
-
-### Safe Logging
-
-The `sanitizeForLog()` utility redacts:
-- Alphanumeric strings 20+ characters (API keys, tokens)
-- URLs containing potential tokens
-- JSON fields named `apiKey`, `token`, `secret`, `password`
-
-## Graceful Degradation Pattern
-
-All connector methods should be wrapped with the `withConnectorErrorHandling` utility to ensure graceful degradation when external services are unavailable.
-
-### Usage
-
-```typescript
-import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
-
-@Injectable()
-export class MyConnector {
-  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
-    return withConnectorErrorHandling('my-connector', async (signal) => {
-      // Your actual connector logic here
-      // Pass signal to HTTP requests for proper cancellation on timeout
-      return await this.api.fetchData({ signal });
-    });
-  }
-
-  async isHealthy(): Promise<boolean> {
-    try {
-      const result = await this.getData();
-      return !(result && typeof result === 'object' && 'error' in result);
-    } catch {
-      return false;
-    }
-  }
-}
-```
-
-### What it provides
-
-- **10-second timeout with AbortController** — calls that exceed this return `{ error: "<name> unavailable", data: null }` (configurable via third parameter). The underlying HTTP request is cancelled via `AbortController.abort()`.
-- **Structured errors** — callers always get a predictable shape, never an unhandled exception
-- **Safe logging** — logs include connector name, error type, and duration; API keys and tokens are automatically redacted via `sanitizeLog()`
-- **Custom timeout** — the third parameter accepts a custom timeout in milliseconds
-
-### AbortSignal Parameter
-
-The factory function receives an `AbortSignal` as its first argument:
-
-```typescript
-fn: (signal: AbortSignal) => Promise<T>
-```
-
-- **HTTP connectors** (ArgoCD, Loki): pass `signal` to `http.get({ signal })` for proper request cancellation
-- **Delegating connectors** (Kubernetes, K8sPrometheus): accept as `_signal` for API consistency
-- **Custom connectors**: if making HTTP requests, pass the signal to enable cancellation
-
-### The `sanitizeLog()` Utility
-
-The `sanitizeLog()` function automatically redacts sensitive information from error logs:
-
-```typescript
-function sanitizeLog(message: string): string {
-  return message.replace(
-    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
-    '$1***redacted***$1',
-  );
-}
-```
-
-## Testing
-
-### Running Tests
-
-```bash
-# Run all tests (or use: make test)
-npm test
-
-# Run tests with coverage
-npm run test:cov
-
-# Run tests in watch mode
-npm run test:watch
-```
-
-### Writing Tests
-
-- Use Jest with `@nestjs/testing` and mocked `ConfigService`
-- Test files should be co-located with their source files as `*.spec.ts`
-- Mock external dependencies (DeepSeek API, Gemini API, Kubernetes client, etc.)
-- Test both success and failure paths (timeouts, errors, empty responses)
-
-## Adding a New Connector
-
-1. Create the connector file in `src/connectors/`
-2. Implement `isHealthy(): Promise<boolean>`
-3. Wrap all public methods with `withConnectorErrorHandling('<name>', ...)`
-4. Register in `ConnectorsModule` (providers + exports)
-5. Add configuration to `config.example.yaml`
-6. Write tests in a co-located `*.spec.ts` file
-
-## See Also
-
-- [Configuration Reference](configuration.md) — full env var reference
-- [Connectors Documentation](connectors.md) — detailed connector architecture
-- [Security Best Practices](security.md) — security considerations
+- The `Dockerfile` uses a multi-stage build: `npm ci` in the builder stage, then `npm ci --only=production && npm cache clean --force` in the runtime stage.
+- `curl` is installed in the runtime image (`apk add --no-cache curl`) for Docker healthchecks.
+- The `.dockerignore` file excludes `node_modules`, `dist`, `.env`, `coverage`, `tests`, and `*.md` from the Docker build context to keep images lean.

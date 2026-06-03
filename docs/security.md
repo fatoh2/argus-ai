@@ -35,6 +35,17 @@ This document outlines the security considerations and best practices for deploy
 - The dev stack uses default passwords and no TLS — it is intentionally insecure for ease of use.
 - For production, use the production Helm chart with proper authentication, TLS, and network policies.
 
+### Docker Compose Production Stack Security
+- The production `docker-compose.yml` includes Redis (redis:7) with no authentication configured by default.
+- **For production deployments**, configure Redis with a password (`requirepass`) and use TLS for connections.
+- The `argus-ai` service depends on Redis being healthy before starting, preventing race conditions.
+- Both services have Docker healthchecks configured to ensure service availability.
+
+### `.dockerignore` Security
+- The `.dockerignore` file excludes `node_modules`, `dist`, `.git`, `.env`, `.env.*`, `coverage`, and `tests` from Docker builds.
+- This prevents accidental inclusion of sensitive files (like `.env` with API keys) in Docker images.
+- It also reduces image size by excluding development artifacts.
+
 ## 2. User Query Security (Prompt Injection Prevention)
 
 ### Robust Input Sanitization
@@ -69,78 +80,71 @@ The `/chat` endpoint implements multiple layers of input validation:
 - This ensures that even when a connector fails, no sensitive credentials are leaked in logs.
 
 ### Health Checks
-- Every connector implements an `isHealthy()` method that verifies connectivity before executing queries.
-- If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
-- The LLM service also exposes `GET /health/llm` which returns `{ ok: boolean, latencyMs: number }`.
+- Every connector implements an `isHealthy()` method for monitoring.
+- The application exposes `GET /health` for basic health checks (used by Docker healthchecks and load balancers).
+- The LLM service exposes `GET /health/llm` for LLM-specific health monitoring with latency tracking.
 
-### Timeout Protection
-- All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility.
-- The timeout uses `AbortController` to cancel the underlying HTTP request — a slow or dead connector will not hold up the entire query pipeline or leave dangling connections.
-- If a connector hangs or is unreachable, the call is aborted and a structured `ConnectorErrorResult` is returned instead of blocking the request indefinitely.
-- This prevents cascading failures — a slow or dead connector will not hold up the entire query pipeline.
+## 4. API Security
 
-### Sanitized Error Logging
-- Connector error logs include the connector name, error type, and duration, but **never API keys, tokens, or secrets**.
-- A `sanitizeLog()` utility automatically redacts values matching common credential patterns from log output:
+### Rate Limiting
+- The `/chat` endpoint is rate-limited to **20 requests per minute per IP** using `@nestjs/throttler` and a custom `ChatRateLimitGuard`.
+- Rate-limit hits are logged with a **hashed IP** (SHA-256) for monitoring without storing raw IP addresses.
+- The response includes a `Retry-After` header so clients can back off appropriately.
 
-```typescript
-function sanitizeLog(message: string): string {
-  return message.replace(
-    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
-    '$1***redacted***$1',
-  );
-}
-```
+### Input Validation
+- All API inputs are validated using `class-validator` DTOs with strict type checking and length limits.
+- A global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` rejects unexpected fields.
+- Control characters and null bytes are stripped from user messages before processing.
 
-## 4. LLM Security
+## 5. Logging Security
 
-### Safe Logging
-The LLM service (`LlmService`) implements its own `sanitizeForLog()` utility that redacts:
-- Alphanumeric strings 20+ characters (API keys, tokens)
-- URLs containing potential tokens
-- JSON fields named `apiKey`, `token`, `secret`, `password`
+### Credential Redaction
+- All error logs are processed through a `sanitizeLog()` function that automatically redacts:
+  - API keys (matches patterns like `sk-...`, `api-...`, `key-...`)
+  - Bearer tokens in Authorization headers
+  - Common secret patterns (passwords, tokens, secrets)
+- The redaction uses regex patterns to find and replace sensitive data with `[REDACTED]`.
+- This prevents accidental credential leakage in log aggregation systems (e.g., Loki, CloudWatch).
 
-The LLM service **never logs full prompt or response content** — only metadata (token count, message count, attempt number, success/failure status).
+### No Sensitive Data in Logs
+- Connector errors log only: connector name, error type, and duration.
+- Rate limit hits log only: hashed IP and timestamp.
+- LLM errors log only: error type and status code.
+- Never log raw API keys, tokens, or user messages.
 
-### Error Classification
-LLM errors are mapped to appropriate HTTP status codes to prevent information leakage:
+## 6. Docker Security
 
-| Error Type | HTTP Status | Logged As |
-|---|---|---|
-| Timeout | `504 Gateway Timeout` | `LLM request timed out` |
-| Rate limit / quota | `429 Too Many Requests` | `LLM rate limit exceeded` |
-| Auth failure | `401 Unauthorized` | `LLM authentication failed` |
-| Server error | `502 Bad Gateway` | `LLM service unavailable after retries` |
+### Multi-stage Build
+- The `Dockerfile` uses a multi-stage build:
+  - **Builder stage**: Installs all dependencies with `npm ci` and compiles TypeScript.
+  - **Production stage**: Copies only the compiled `dist/` and installs production dependencies with `npm ci --only=production`, then cleans the npm cache.
+- This minimizes the final image size and excludes development tools and source code.
 
-Error messages are sanitized before logging — the original error message is passed through `sanitizeForLog()` to redact any embedded secrets.
+### Minimal Base Image
+- The production stage uses `node:20-alpine` as the base image, which is a minimal Linux distribution.
+- Only `curl` is added (via `apk add --no-cache curl`) for Docker healthchecks.
+- No other packages or tools are installed in the production image.
 
-### Token Limit Guard
-- Prompts exceeding 50k estimated tokens are truncated by removing oldest messages first.
-- This prevents excessively large prompts from being sent to the LLM API, reducing the risk of prompt injection through accumulated history.
+### Healthchecks
+- The `argus-ai` service in `docker-compose.yml` has a healthcheck: `curl -sf http://localhost:3000/health`
+- The `redis` service has a healthcheck: `redis-cli ping`
+- Healthchecks ensure containers are actually serving traffic before they are considered healthy.
 
-### Timeout Protection
-- LLM calls have a **30-second hard timeout** enforced via `Promise.race`.
-- Timeout errors are NOT retried — they fail fast with `504 Gateway Timeout`.
-- This prevents a malicious or buggy prompt from holding the LLM connection indefinitely.
+### `.dockerignore`
+- The `.dockerignore` prevents `node_modules`, `dist`, `.git`, `.env`, `.env.*`, `coverage`, and `tests` from being included in Docker build context.
+- This is critical for security (prevents leaking `.env` files) and performance (smaller build context).
 
-## 5. Deployment Security
+## 7. Deployment Security
 
-### Network Security
-- Deploy Argus AI within a private network or behind a reverse proxy.
-- Use HTTPS for all external communications.
-- Restrict network access to only the necessary endpoints (Kubernetes API, Prometheus, Loki, ArgoCD, GitHub API).
-
-### Secrets Management
-- Use a secrets management solution (e.g., Kubernetes Secrets, HashiCorp Vault, AWS Secrets Manager) for production deployments.
-- Avoid hardcoding secrets in configuration files or environment variables in plain text.
-
-### Regular Updates
-- Keep all dependencies up to date to patch known vulnerabilities.
-- Regularly update the DeepSeek API client library (primary) and Gemini API client library (optional fallback) and other dependencies.
-- Monitor security advisories for the NestJS framework and related packages.
-
-## See Also
-
-- [Configuration Reference](configuration.md) — environment variable setup
-- [Development Guide](development.md) — local development setup
-- [Connectors Documentation](connectors.md) — connector architecture
+### Production Checklist
+Before deploying to production:
+- [ ] Use Kubernetes Secrets or a secrets manager for all sensitive environment variables
+- [ ] Configure Redis with a password and TLS
+- [ ] Disable Grafana anonymous admin access (dev stack only)
+- [ ] Use TLS/HTTPS for all external endpoints
+- [ ] Set `NODE_ENV=production`
+- [ ] Configure network policies to restrict pod-to-pod communication
+- [ ] Use read-only service accounts for Kubernetes connector
+- [ ] Enable audit logging for all connectors
+- [ ] Regularly rotate API keys and tokens
+- [ ] Monitor health endpoints and set up alerts

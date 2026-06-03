@@ -12,18 +12,32 @@ and optionally argus-monitor's database.
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
-- **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
+- **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`; `--forceExit` for integration tests
+- **Queue/Jobs**: Redis 7 (via `docker-compose.yml` with healthcheck)
 - **Local Dev**: Docker Compose (`docker-compose.dev.yml`) with Prometheus, Loki, Grafana
-- **Dev Shortcuts**: `Makefile` with `make up`, `make down`, `make check`, `make test`, `make chat`, `make health`, `make logs`
+- **Production Stack**: Docker Compose (`docker-compose.yml`) with Redis + argus-ai (healthchecks on both)
+- **Dev Shortcuts**: `Makefile` with `make up`, `make down`, `make clean`, `make check`, `make test`, `make test-local`, `make chat`, `make health`, `make logs`
 
 ## Standing Rules
 
 ### Never clone this repo inside itself
 The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If you are an agent operating inside this repo, do NOT run `git clone` targeting this same repository — it creates a nested copy that wastes disk space and confuses tooling. If you find an `argus-ai/` directory inside the repo, it is a stray artifact and should be deleted.
 
+### Always verify before pushing
+Before `git push`, run:
+```bash
+make check   # tsc --noEmit — must exit 0
+make test    # jest --forceExit — must exit 0
+```
+If `make test-local` exists, also run that as the final gate.
+
 ## Repo Structure
 ```
+.dockerignore              # Prevents node_modules, .env, dist from entering Docker images
+docker-compose.yml         # Production stack: Redis + argus-ai with healthchecks
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
+Dockerfile                 # Multi-stage build (npm ci, curl for healthcheck, cache clean)
+.env.example               # Template — copy to .env, never commit .env
 scripts/
   setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
 Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
@@ -39,7 +53,7 @@ docker/
       dashboards.yaml      # Dashboard provisioning config
 src/
   app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
-  app.controller.ts       # Health check endpoint
+  app.controller.ts       # GET /health + GET /health/llm endpoints
   app.service.ts          # Core application service
   main.ts                 # Bootstrap — global ValidationPipe with whitelist
   chat/                   # Chat API module (REST endpoint)
@@ -48,6 +62,7 @@ src/
     chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
     dto/
       chat.dto.ts         # ChatDto — IsString, MaxLength(4000)
+    chat.integration.spec.ts  # Integration tests (boots stack, hits /health, validates chat)
   connectors/
     connectors.module.ts  # Registers and exports all connectors
     utils/
@@ -64,6 +79,8 @@ src/
     llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
     llm.controller.spec.ts# Tests for LlmController
     deepseek/             # DeepSeek V3 API client (primary LLM)
+      deepseek.service.ts
+      deepseek.service.spec.ts  # Unit tests for DeepSeek API client
     gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
@@ -117,3 +134,33 @@ The factory function receives an `AbortSignal` as its first argument:
 
 ```typescript
 fn: (signal: AbortSignal) => Promise<T>
+```
+
+Always pass `signal` to HTTP requests (e.g., `fetch(url, { signal })`) so the request is properly cancelled when the timeout fires.
+
+## Testing
+
+### Test files
+
+| File | Type | What it tests |
+|---|---|---|
+| `src/chat/chat.integration.spec.ts` | Integration | `GET /health`, `POST /chat` validation |
+| `src/llm/deepseek/deepseek.service.spec.ts` | Unit | DeepSeek API payload building, error handling |
+| `src/llm/llm.service.spec.ts` | Unit | LLM service tool-use loop, timeout, retry |
+| `src/llm/llm.controller.spec.ts` | Unit | LLM health check endpoint |
+| `src/connectors/utils/connector-error.spec.ts` | Unit | Graceful degradation utility |
+| `src/connectors/kubernetes.connector.spec.ts` | Unit | Kubernetes connector methods |
+| `src/connectors/prometheus/prometheus.connector.spec.ts` | Unit | Prometheus connector methods |
+
+### Running tests
+
+```bash
+make test       # jest --forceExit
+make test-local # Boot Docker stack → health check → tsc → tests → teardown
+```
+
+## Docker Build
+
+- **Multi-stage**: `npm ci` in builder, `npm ci --only=production && npm cache clean --force` in runtime
+- **Healthchecks**: `curl` installed via `apk add --no-cache curl` for Docker healthchecks
+- **`.dockerignore`**: Excludes `node_modules`, `dist`, `.env`, `coverage`, `tests`, `*.md`
