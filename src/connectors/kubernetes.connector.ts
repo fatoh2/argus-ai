@@ -17,6 +17,11 @@ export class KubernetesConnector {
     if (!this.available) this.logger.warn('[k8s] no KUBECONFIG — running in offline mode');
   }
 
+  /** Returns true if KUBECONFIG is set and the connector can operate. */
+  async isHealthy(): Promise<boolean> {
+    return this.available;
+  }
+
   async listPods(namespace = 'default'): Promise<any[]> {
     if (!this.available) return [{ status: 'connector offline', reason: 'KUBECONFIG not configured' }];
     try {

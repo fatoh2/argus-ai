@@ -1,18 +1,42 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
+/** Prometheus connector — queries metrics API.
+ *  Gracefully returns empty data when PROMETHEUS_URL is not set. */
 @Injectable()
 export class PrometheusConnector {
-  async instantQuery(query: string): Promise<any> {
-    console.log(`PrometheusConnector: Executing instant query: ${query}`);
-    // TODO: Implement Prometheus instant query API call
-    // Mock response for now
-    return { data: { result: [] } };
+  private readonly logger = new Logger(PrometheusConnector.name);
+  private readonly url: string;
+
+  constructor() {
+    this.url = process.env.PROMETHEUS_URL || '';
+    if (!this.url) this.logger.warn('[prometheus] PROMETHEUS_URL not set — offline mode');
   }
 
-  async rangeQuery(query: string, start: number, end: number, step: string = '1m'): Promise<any> {
-    console.log(`PrometheusConnector: Executing range query: ${query} from ${start} to ${end} with step ${step}`);
-    // TODO: Implement Prometheus range query API call
-    // Mock response for now
-    return { data: { result: [] } };
+  /** Returns true if PROMETHEUS_URL is configured. */
+  async isHealthy(): Promise<boolean> {
+    return !!this.url;
+  }
+
+  async instantQuery(query: string): Promise<any> {
+    if (!this.url) return { status: 'connector offline', reason: 'PROMETHEUS_URL not configured' };
+    try {
+      const res = await fetch(`${this.url}/api/v1/query?query=${encodeURIComponent(query)}`);
+      return await res.json();
+    } catch (e: any) {
+      this.logger.error(`instantQuery failed: ${e.message}`);
+      return { status: 'error', error: e.message };
+    }
+  }
+
+  async rangeQuery(query: string, start: number, end: number, step = '1m'): Promise<any> {
+    if (!this.url) return { status: 'connector offline' };
+    try {
+      const params = new URLSearchParams({ query, start: String(start), end: String(end), step });
+      const res = await fetch(`${this.url}/api/v1/query_range?${params}`);
+      return await res.json();
+    } catch (e: any) {
+      this.logger.error(`rangeQuery failed: ${e.message}`);
+      return { status: 'error', error: e.message };
+    }
   }
 }
