@@ -51,7 +51,7 @@ gemini:
 
 Configuration for the Kubernetes connector.
 
--   `kubeconfig_path`: Path to your kubeconfig file. Supports `~` expansion and environment variables (e.g., `${KUBECONFIG_PATH}`). If left empty, Argus AI will attempt to use in-cluster configuration (suitable when running inside a Kubernetes cluster).
+-   `kubeconfig_path`: Path to your kubeconfig file. Supports `~` expansion and environment variables (e.g., `${KUBECONFIG}`). If left empty, Argus AI will attempt to use in-cluster configuration (suitable when running inside a Kubernetes cluster). If neither `KUBECONFIG` nor in-cluster config is available, the connector runs in offline mode.
 
 Example:
 
@@ -66,6 +66,8 @@ Configuration for the Prometheus connector.
 
 -   `url`: URL of your Prometheus instance (e.g., `http://localhost:9090`, `https://prometheus.example.com`).
 
+The Prometheus connector now makes real HTTP requests to the Prometheus API (previously used stubs). If `PROMETHEUS_URL` is not set, the connector runs in offline mode.
+
 Example:
 
 ```yaml
@@ -79,6 +81,8 @@ Configuration for the Loki connector.
 
 -   `url`: URL of your Loki instance (e.g., `http://localhost:3100`, `https://loki.example.com`).
 
+If `LOKI_URL` is not set, the connector runs in offline mode — all methods return empty/structured results instead of crashing.
+
 Example:
 
 ```yaml
@@ -91,7 +95,9 @@ loki:
 Configuration for the ArgoCD connector.
 
 -   `url`: URL of your ArgoCD instance (e.g., `https://argocd.example.com`).
--   `token`: ArgoCD authentication token. **Required.** Populated via environment variable (e.g., `${ARGOCD_AUTH_TOKEN}`).
+-   `token`: ArgoCD authentication token. **Required.** Populated via environment variable (e.g., `${ARGOCD_TOKEN}`).
+
+If `ARGOCD_URL` is not set, the connector runs in offline mode — all methods return empty/structured results instead of crashing.
 
 Example:
 

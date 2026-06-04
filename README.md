@@ -7,7 +7,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
 - **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
-- **Graceful Degradation**: All connectors handle timeouts and failures gracefully — if a service is unreachable, the underlying HTTP request is cancelled via AbortController and the LLM receives a structured error and informs the user instead of crashing.
+- **Graceful Degradation**: All connectors handle missing environment variables, timeouts, and failures gracefully — if a service is unreachable or unconfigured, the connector operates in offline mode and returns structured empty/offline results instead of crashing. The LLM receives a clear message that the service is unavailable.
 - **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
 - **Input Validation & Sanitization**: The `/chat` endpoint validates message length (max 4000 characters), strips control characters and null bytes, and rejects empty messages with a `400 Bad Request`.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
@@ -121,11 +121,11 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 | `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
 | `LLM_MAX_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
-| `KUBECONFIG_PATH` | Path to kubeconfig file | No | In-cluster config |
-| `PROMETHEUS_URL` | Prometheus URL | No | `http://localhost:9090` |
-| `LOKI_URL` | Loki URL | No | `http://localhost:3100` |
-| `ARGOCD_URL` | ArgoCD URL | No | `https://localhost:8080` |
-| `ARGOCD_AUTH_TOKEN` | ArgoCD auth token | No | — |
+| `KUBECONFIG` | Path to kubeconfig file | No | (empty — in-cluster config) |
+| `PROMETHEUS_URL` | Prometheus URL | No | (empty — offline mode) |
+| `LOKI_URL` | Loki URL | No | (empty — offline mode) |
+| `ARGOCD_URL` | ArgoCD URL | No | (empty — offline mode) |
+| `ARGOCD_TOKEN` | ArgoCD auth token | No | (empty — offline mode) |
 | `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No | — |
 | `ARGUS_MONITOR_DB_URL` | Argus Monitor DB connection string | No | — |
 

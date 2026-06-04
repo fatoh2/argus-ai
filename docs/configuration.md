@@ -105,9 +105,11 @@ The Kubernetes connector can operate in two modes:
     -   Set the `KUBECONFIG` environment variable to the path of your kubeconfig file.
     -   The path supports `~` expansion and environment variable references (e.g., `${HOME}/.kube/config`).
 
+3.  **Offline mode**: If `KUBECONFIG` is not set and the app is not running in-cluster, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), and all methods return empty/offline results. A warning is logged at startup.
+
 **Available Methods** (all wrapped with graceful degradation):
 
-- `isHealthy()` — Health check
+- `isHealthy()` — Returns `false` immediately if `KUBECONFIG` not set; otherwise health check against the Kubernetes API
 - `listPods(namespace)` — List pods in a namespace
 - `getPodLogs(podName, namespace)` — Get logs for a specific pod
 - `describeDeployment(deploymentName, namespace)` — Describe a deployment
@@ -118,16 +120,22 @@ The Kubernetes connector can operate in two modes:
 2.  Set the `PROMETHEUS_URL` environment variable or add it to your `config.yaml`.
 3.  If your Prometheus instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
+4.  **Offline mode**: If `PROMETHEUS_URL` is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), and query methods return empty result sets. A warning is logged at startup.
+
 ### Loki Connector Setup
 
 1.  Ensure your Loki instance is accessible from where Argus AI is running.
 2.  Set the `LOKI_URL` environment variable or add it to your `config.yaml`.
 3.  If your Loki instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
+4.  **Offline mode**: If `LOKI_URL` is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), `queryRange()` returns an offline result, and `summarizeErrors()` returns an offline message. A warning is logged at startup.
+
 ### ArgoCD Connector Setup
 
 1.  Ensure your ArgoCD instance is accessible from where Argus AI is running.
 2.  Set the `ARGOCD_URL` and `ARGOCD_TOKEN` environment variables or add them to your `config.yaml`.
+
+3.  **Offline mode**: If `ARGOCD_URL` is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), `getAppStatus()` returns an offline status object, `listApps()` returns an empty array, and `getClusterSummary()` returns an offline message. A warning is logged at startup.
 
 ### GitHub Actions Connector Setup
 
