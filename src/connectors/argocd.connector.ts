@@ -35,20 +35,23 @@ export class ArgoCDConnector {
   private readonly logger = new Logger(ArgoCDConnector.name);
   private readonly baseUrl: string;
   private readonly token: string;
+  private readonly available: boolean;
 
   constructor(private configService: ConfigService) {
     this.baseUrl = this.configService.get<string>('argocd.url', 'https://localhost:8080');
     this.token = this.configService.get<string>('argocd.token', '');
+    // Check if ARGOCD_URL env var is explicitly set; if not, connector is offline
+    this.available = !!process.env.ARGOCD_URL;
+    if (!this.available) this.logger.warn('[argocd] ARGOCD_URL not set — running in offline mode');
   }
 
-  /**
-   * Health check — verifies ArgoCD is reachable
-   */
+  /** Returns true if ARGOCD_URL is configured and ArgoCD is reachable. */
   async isHealthy(): Promise<boolean> {
+    if (!this.available) return false;
     try {
       const response = await this.request('/api/v1/session/userinfo');
       return response.statusCode === 200;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`ArgoCD health check failed: ${error.message}`);
       return false;
     }
@@ -58,6 +61,16 @@ export class ArgoCDConnector {
    * Get sync status and health for a specific ArgoCD application.
    */
   async getAppStatus(appName: string): Promise<ArgoCDAppStatus> {
+    if (!this.available) {
+      return {
+        name: appName,
+        namespace: 'default',
+        syncStatus: 'Unknown',
+        healthStatus: 'Unknown',
+        summary: 'ArgoCD connector offline — ARGOCD_URL not configured.',
+      };
+    }
+
     this.logger.debug(`ArgoCD: fetching status for app ${appName}`);
 
     try {
@@ -69,9 +82,15 @@ export class ArgoCDConnector {
       }
 
       return this.transformAppStatus(body);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`ArgoCD getAppStatus failed: ${error.message}`);
-      throw error;
+      return {
+        name: appName,
+        namespace: 'default',
+        syncStatus: 'Unknown',
+        healthStatus: 'Unknown',
+        summary: `Failed to query ArgoCD: ${error.message}`,
+      };
     }
   }
 
@@ -79,6 +98,10 @@ export class ArgoCDConnector {
    * List all applications with their sync and health status.
    */
   async listApps(): Promise<ArgoCDAppStatus[]> {
+    if (!this.available) {
+      return [];
+    }
+
     this.logger.debug('ArgoCD: listing all applications');
 
     try {
@@ -91,9 +114,9 @@ export class ArgoCDConnector {
 
       const items = body.items || [];
       return items.map((item: any) => this.transformAppStatus(item));
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`ArgoCD listApps failed: ${error.message}`);
-      throw error;
+      return [];
     }
   }
 
@@ -101,6 +124,10 @@ export class ArgoCDConnector {
    * Get a summary of all applications — healthy vs unhealthy.
    */
   async getClusterSummary(): Promise<string> {
+    if (!this.available) {
+      return 'ArgoCD connector offline — ARGOCD_URL not configured.';
+    }
+
     try {
       const apps = await this.listApps();
 
@@ -135,7 +162,7 @@ export class ArgoCDConnector {
       }
 
       return summary;
-    } catch (error) {
+    } catch (error: any) {
       return `Failed to query ArgoCD: ${error.message}`;
     }
   }

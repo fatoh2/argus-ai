@@ -29,19 +29,22 @@ export class LokiConnector {
   private readonly logger = new Logger(LokiConnector.name);
   private readonly baseUrl: string;
   private readonly defaultLimit = 500;
+  private readonly available: boolean;
 
   constructor(private configService: ConfigService) {
     this.baseUrl = this.configService.get<string>('loki.url', 'http://localhost:3100');
+    // Check if LOKI_URL env var is explicitly set; if not, connector is offline
+    this.available = !!process.env.LOKI_URL;
+    if (!this.available) this.logger.warn('[loki] LOKI_URL not set — running in offline mode');
   }
 
-  /**
-   * Health check — verifies Loki is reachable
-   */
+  /** Returns true if LOKI_URL is configured. */
   async isHealthy(): Promise<boolean> {
+    if (!this.available) return false;
     try {
       const response = await this.request('/ready');
       return response.statusCode === 200;
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Loki health check failed: ${error.message}`);
       return false;
     }
@@ -52,6 +55,10 @@ export class LokiConnector {
    * Returns log entries with their labels and timestamps.
    */
   async queryRange(options: LokiQueryOptions): Promise<LokiQueryResult> {
+    if (!this.available) {
+      return { status: 'connector offline', data: { result: [] } };
+    }
+
     const { query, start, end, limit } = options;
     const effectiveLimit = Math.min(limit ?? this.defaultLimit, 500);
 
@@ -79,9 +86,9 @@ export class LokiConnector {
       }
 
       return this.transformResult(body);
-    } catch (error) {
+    } catch (error: any) {
       this.logger.error(`Loki query failed: ${error.message}`);
-      throw error;
+      return { status: 'error', data: { result: [] } };
     }
   }
 
@@ -109,6 +116,10 @@ export class LokiConnector {
    * This is the key method for "summarize errors from the last hour".
    */
   async summarizeErrors(hours: number = 1, labelSelector: string = '{}'): Promise<string> {
+    if (!this.available) {
+      return 'Loki connector offline — LOKI_URL not configured.';
+    }
+
     const end = new Date().toISOString();
     const start = new Date(Date.now() - hours * 3600000).toISOString();
 
@@ -157,7 +168,7 @@ export class LokiConnector {
         'Top error messages:',
         topMessages,
       ].join('\n');
-    } catch (error) {
+    } catch (error: any) {
       return `Failed to query Loki for errors: ${error.message}`;
     }
   }
@@ -180,6 +191,31 @@ export class LokiConnector {
     return new Date(Date.now() - 3600000);
   }
 
+  private transformResult(raw: any): LokiQueryResult {
+    const streams = raw?.data?.result || [];
+    const entries: LokiLogEntry[] = [];
+
+    for (const stream of streams) {
+      const labels = stream?.stream || {};
+      const values = stream?.values || [];
+      for (const [timestamp, line] of values) {
+        entries.push({
+          timestamp,
+          line,
+          labels,
+        });
+      }
+    }
+
+    return {
+      status: raw?.status || 'success',
+      data: {
+        result: entries,
+        stats: raw?.data?.stats,
+      },
+    };
+  }
+
   private request(path: string): Promise<{ statusCode: number; body: string }> {
     return new Promise((resolve, reject) => {
       const url = new URL(path, this.baseUrl);
@@ -199,32 +235,5 @@ export class LokiConnector {
         reject(new Error('Request timed out'));
       });
     });
-  }
-
-  private transformResult(raw: any): LokiQueryResult {
-    const result: LokiLogEntry[] = [];
-
-    if (raw?.data?.result) {
-      for (const stream of raw.data.result) {
-        const labels = stream.stream || {};
-        const values = stream.values || [];
-
-        for (const [timestamp, line] of values) {
-          result.push({
-            timestamp: new Date(parseInt(timestamp, 10) / 1000000).toISOString(),
-            line: String(line),
-            labels,
-          });
-        }
-      }
-    }
-
-    return {
-      status: raw?.status || 'unknown',
-      data: {
-        result,
-        stats: raw?.data?.stats,
-      },
-    };
   }
 }

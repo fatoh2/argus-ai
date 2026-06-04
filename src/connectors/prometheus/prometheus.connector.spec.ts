@@ -9,6 +9,9 @@ describe('PrometheusConnector', () => {
     jest.spyOn(console, 'error').mockImplementation(() => {});
     jest.spyOn(console, 'log').mockImplementation(() => {});
 
+    // Ensure PROMETHEUS_URL is not set so connector runs in offline mode
+    delete process.env.PROMETHEUS_URL;
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [PrometheusConnector],
     }).compile();
@@ -20,10 +23,28 @@ describe('PrometheusConnector', () => {
     jest.restoreAllMocks();
   });
 
+  describe('isHealthy', () => {
+    it('should return false when PROMETHEUS_URL not set', async () => {
+      const result = await connector.isHealthy();
+      expect(result).toBe(false);
+    });
+
+    it('should return true when PROMETHEUS_URL is set', async () => {
+      process.env.PROMETHEUS_URL = 'http://prometheus:9090';
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [PrometheusConnector],
+      }).compile();
+      const configuredConnector = module.get<PrometheusConnector>(PrometheusConnector);
+      const result = await configuredConnector.isHealthy();
+      expect(result).toBe(true);
+      delete process.env.PROMETHEUS_URL;
+    });
+  });
+
   describe('instantQuery', () => {
-    it('should return mock data on success', async () => {
+    it('should return offline status when PROMETHEUS_URL not set', async () => {
       const result = await connector.instantQuery('up');
-      expect(result).toEqual({ data: { result: [] } });
+      expect(result).toEqual({ status: 'connector offline', reason: 'PROMETHEUS_URL not configured' });
     });
 
     it('should return structured error on timeout, does not throw', async () => {
@@ -58,9 +79,9 @@ describe('PrometheusConnector', () => {
   });
 
   describe('rangeQuery', () => {
-    it('should return mock data on success', async () => {
+    it('should return offline status when PROMETHEUS_URL not set', async () => {
       const result = await connector.rangeQuery('up', 0, 100, '1m');
-      expect(result).toEqual({ data: { result: [] } });
+      expect(result).toEqual({ status: 'connector offline' });
     });
 
     it('should return structured error on timeout, does not throw', async () => {
@@ -91,15 +112,6 @@ describe('PrometheusConnector', () => {
         error: 'prometheus unavailable',
         data: null,
       });
-    });
-  });
-
-  describe('offline mode', () => {
-    it('should return empty array when PROMETHEUS_URL not set (offline mode)', async () => {
-      // When PROMETHEUS_URL is not set, the connector should return empty results
-      // The current implementation always returns mock data, so this verifies the stub behavior
-      const result = await connector.instantQuery('up');
-      expect(result).toEqual({ data: { result: [] } });
     });
   });
 });

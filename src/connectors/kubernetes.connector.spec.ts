@@ -20,6 +20,24 @@ describe('KubernetesConnector', () => {
     expect(connector).toBeDefined();
   });
 
+  describe('isHealthy', () => {
+    it('should return false when KUBECONFIG not set', async () => {
+      const result = await connector.isHealthy();
+      expect(result).toBe(false);
+    });
+
+    it('should return true when KUBECONFIG is set', async () => {
+      process.env.KUBECONFIG = '/tmp/kubeconfig';
+      const module: TestingModule = await Test.createTestingModule({
+        providers: [KubernetesConnector],
+      }).compile();
+      const configuredConnector = module.get<KubernetesConnector>(KubernetesConnector);
+      const result = await configuredConnector.isHealthy();
+      expect(result).toBe(true);
+      delete process.env.KUBECONFIG;
+    });
+  });
+
   describe('listPods', () => {
     it('should return offline status when KUBECONFIG not set', async () => {
       const result = await connector.listPods();
