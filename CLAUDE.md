@@ -8,9 +8,8 @@ and optionally argus-monitor's database.
 
 ## Stack
 - **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (optional fallback)
-- **Tool Use**: Agentic loop — sends tool schemas, executes `tool_calls`, feeds results back (max 5 iterations)
-- **Tool Registry**: `ToolRegistryService` — defines function schemas and routes calls to connectors
 - **Backend**: NestJS + TypeScript
+- **K8s Client**: `@kubernetes/client-node` (v1.4.0+) — loads `KUBECONFIG` env var
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
@@ -23,8 +22,12 @@ and optionally argus-monitor's database.
 ### Never clone this repo inside itself
 The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If you are an agent operating inside this repo, do NOT run `git clone` targeting this same repository — it creates a nested copy that wastes disk space and confuses tooling. If you find an `argus-ai/` directory inside the repo, it is a stray artifact and should be deleted.
 
+### Never commit kubeconfig files
+The `.kube/` directory is gitignored. Never add kubeconfig files to the repository.
+
 ## Repo Structure
 ```
+docker-compose.yml         # Production stack: Redis + argus-ai (with optional kubeconfig mount)
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
 scripts/
   setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
@@ -43,7 +46,7 @@ src/
   app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint
   app.service.ts          # Core application service
-  main.ts                 # Bootstrap — global ValidationPipe with whitelist
+  main.ts                 # Bootstrap — global ValidationPipe with whitelist, serves public/ dashboard
   chat/                   # Chat API module (REST endpoint)
     chat.controller.ts    # POST /chat — input sanitization (strips control chars)
     chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
@@ -55,24 +58,28 @@ src/
     utils/
       connector-error.ts  # Graceful degradation utility (timeout + AbortController + structured errors + log sanitization)
       connector-error.spec.ts  # Tests for error handling utility
-    kubernetes.connector.ts  # Real K8s API client via @kubernetes/client-node (listPods, listDeployments, listNamespaces, describeDeployment, getPodLogs)
-    prometheus/
-      prometheus.connector.ts  # PromQL query wrapper
+    k8s-prometheus.connector.ts
+    kubernetes.connector.ts  # Real K8s connector via @kubernetes/client-node
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
   llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
-    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule + ConnectorsModule, registers ToolRegistryService
-    llm.service.ts        # LlmService — wires tools into every chat call, 30s timeout, retry, token guard
+    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
+    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
     llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
     llm.controller.spec.ts# Tests for LlmController
     deepseek/             # DeepSeek V3 API client (primary LLM)
       deepseek.service.ts # Agentic loop: sends tools, executes tool_calls, feeds results back (max 5 iterations)
-      deepseek.service.spec.ts
     gemini/               # Google Gemini API client (optional fallback)
-      gemini.service.ts   # Checks GEMINI_API_KEY at startup; marks unavailable if missing
     tools/
-      tool-registry.service.ts  # Tool schemas + executor — routes tool calls to connectors
+      tool-registry.service.ts  # Central registry of LLM-callable tool schemas + executor
+      tool-registry.service.spec.ts  # Tests for ToolRegistryService
+  health/                 # Health check module
+    health.controller.ts  # GET /health — overall system health
+    health.service.ts     # Health check logic
+    health.service.spec.ts  # Tests for HealthService
+  public/                 # Static assets served by the app
+    index.html            # Chat dashboard UI (vanilla JS, no build step)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -85,6 +92,14 @@ All connectors:
 - Are registered in `ConnectorsModule` (providers + exports)
 - Are strictly read-only
 - **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
+
+### Kubernetes Connector (special case)
+The Kubernetes connector uses `@kubernetes/client-node` and loads configuration from the
+`KUBECONFIG` environment variable (not `ConfigService`). It has two modes:
+- **Online**: `KUBECONFIG` is set → loads kubeconfig, creates API clients
+- **Offline**: `KUBECONFIG` is not set → returns structured offline markers
+
+Available methods: `listPods`, `listDeployments`, `listNamespaces`, `describeDeployment`, `getPodLogs`.
 
 ### Graceful Degradation Pattern
 
@@ -129,25 +144,24 @@ fn: (signal: AbortSignal) => Promise<T>
 
 ## Tool Registry Architecture
 
-The `ToolRegistryService` is the bridge between the LLM and connectors:
+The `ToolRegistryService` (at `src/llm/tools/tool-registry.service.ts`) is the central registry
+of LLM-callable tools. It provides:
 
-1. **`getToolSchemas()`** — returns OpenAI/DeepSeek-compatible function schemas for all available tools
-2. **`executeTool(name, args)`** — routes a tool call to the appropriate connector method and returns a JSON string result
+1. **Tool schemas** — OpenAI/DeepSeek-compatible function-calling schemas via `getToolSchemas()`
+2. **Tool execution** — routes tool calls to connectors via `executeTool(name, args)`
 
 To add a new tool:
-1. Add a method to the relevant connector
-2. Add a schema entry in `getToolSchemas()`
-3. Add a case in `executeTool()` switch statement
-4. Write tests
+1. Add a schema to `getToolSchemas()`
+2. Add a case to the `switch` in `executeTool()`
+3. Inject the relevant connector into `ToolRegistryService`
 
 ## Agentic Tool-Use Loop
 
 The `DeepSeekService.chat()` method implements an agentic loop:
 
-1. Sends the user query + tool schemas to the DeepSeek API
-2. If the model responds with `tool_calls`, executes them via `ToolRegistryService`
-3. Feeds tool results back into the conversation
+1. Sends the user query + tool schemas to the model
+2. If the model returns `tool_calls`, executes them via `ToolRegistryService`
+3. Feeds results back to the model
 4. Repeats until the model produces a final answer (max 5 iterations)
-5. Returns the final response
 
-The `LlmService` wires tools into every chat call by passing `toolOptions` (schemas + executor) to `DeepSeekService.chat()`.
+The `LlmService.runToolUseLoop()` orchestrates this with timeout, retry, and Gemini fallback.

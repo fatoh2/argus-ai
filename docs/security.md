@@ -11,6 +11,12 @@ This document outlines the security considerations and best practices for deploy
 - The `config.yaml` file should only contain non-sensitive configuration parameters or references to environment variables using the `${ENV_VAR_NAME}` syntax.
 - **Never commit `config.yaml` or `.env` files with actual credentials to Git.**
 
+### Kubeconfig Security
+- The `.kube/` directory is gitignored. Never commit kubeconfig files to the repository.
+- When mounting a kubeconfig into the Docker container, it is mounted **read-only** (`./.kube:/kube:ro`) to prevent the container from modifying it.
+- The Kubernetes connector is strictly **read-only** — it only calls `get`, `list`, and `describe` operations. It never creates, updates, or deletes resources.
+- Consider using a dedicated service account with minimal read-only RBAC permissions instead of a full admin kubeconfig.
+
 ### Secure Environment Variable Usage
 - Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) to securely load and validate environment variables.
 - The `ConfigModule` is registered globally in `app.module.ts` with `isGlobal: true`, making `ConfigService` available to all modules.
@@ -35,11 +41,6 @@ This document outlines the security considerations and best practices for deploy
 - The dev stack uses default passwords and no TLS — it is intentionally insecure for ease of use.
 - For production, use the production Helm chart with proper authentication, TLS, and network policies.
 
-### `.dockerignore` Security
-- The `.dockerignore` file excludes `node_modules`, `dist`, `.git`, `.env`, `.env.*`, `coverage`, and `tests` from Docker builds.
-- This prevents accidental inclusion of sensitive files (like `.env` with API keys) in Docker images.
-- It also reduces image size by excluding development artifacts.
-
 ## 2. User Query Security (Prompt Injection Prevention)
 
 ### Robust Input Sanitization
@@ -59,14 +60,18 @@ The `/chat` endpoint implements multiple layers of input validation:
 
 ### LLM Guardrails
 - In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses. The DeepSeek V3 system prompt instructs the model to never reveal API keys, tokens, or sensitive configuration.
-- Tool calls are strictly **read-only** — the `ToolRegistryService` only routes to connector methods that query data, never mutate state.
 
 ## 3. Connector Interaction Security
 
 ### Read-Only Access
-- Argus AI is designed to operate with **read-only** access to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
-- The `ToolRegistryService` only exposes read-only connector methods as LLM-callable tools.
+- Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
 - Ensure that the credentials provided to Argus AI (e.g., Kubernetes service accounts, GitHub tokens) are scoped to the minimum necessary read-only permissions.
+- The Kubernetes connector only calls `get`, `list`, and `describe` API operations — it never creates, updates, or deletes resources.
+
+### Tool Registry Security
+- The `ToolRegistryService` only exposes tools that map to read-only connector methods.
+- Tool schemas are predefined and hardcoded — the LLM cannot invent new tool calls or modify existing ones.
+- Tool execution is routed through a strict `switch` statement — unknown tool names return an error and are never executed against infrastructure.
 
 ### Graceful Degradation with Safe Error Handling
 - All connector methods are wrapped with `withConnectorErrorHandling()` which provides:
@@ -76,74 +81,53 @@ The `/chat` endpoint implements multiple layers of input validation:
 - This ensures that even when a connector fails, no sensitive credentials are leaked in logs.
 
 ### Health Checks
-- Every connector implements an `isHealthy()` method that verifies connectivity before executing queries.
-- If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
-- The LLM service also exposes `GET /health/llm` which returns `{ ok: boolean, latencyMs: number }`.
+- Every connector implements an `isHealthy()` method that can be used to verify connectivity before making operational queries.
+- The `GET /health` endpoint provides an overall system health summary.
 
-### Timeout Protection
-- All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility.
+## 4. LLM Security
 
-## 4. API Security
+### API Key Management
+- DeepSeek and Gemini API keys are loaded from environment variables (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`).
+- If `DEEPSEEK_API_KEY` is not set, the app still boots but returns errors on `/chat` — it does not crash.
+- If `GEMINI_API_KEY` is not set, the Gemini fallback is gracefully skipped.
 
-### Rate Limiting
-- The `/chat` endpoint is rate-limited to **20 requests per minute per IP** using `@nestjs/throttler` and a custom `ChatRateLimitGuard`.
-- Rate-limit hits are logged with a **hashed IP** (SHA-256) for monitoring without storing raw IP addresses.
-- The response includes a `Retry-After` header so clients can back off appropriately.
+### Timeout and Retry Protection
+- LLM calls have a **30-second hard timeout** to prevent runaway requests.
+- On 5xx server errors, the call is retried once before returning an error to the user.
+- Timeout errors are NOT retried — they immediately return `504 Gateway Timeout`.
 
-### Input Validation
-- All API inputs are validated using `class-validator` DTOs with strict type checking and length limits.
-- A global `ValidationPipe` with `whitelist: true` and `forbidNonWhitelisted: true` rejects unexpected fields.
-- Control characters and null bytes are stripped from user messages before processing.
+### Token Limit Guard
+- Conversation history is truncated when estimated tokens exceed `LLM_MAX_TOKENS` (default 50k), with oldest messages removed first.
+- This prevents excessively long prompts that could lead to degraded model performance or increased costs.
 
-## 5. Logging Security
+## 5. Deployment Security
 
-### Credential Redaction
-- All error logs are processed through a `sanitizeLog()` function that automatically redacts:
-  - API keys (matches patterns like `sk-...`, `api-...`, `key-...`)
-  - Bearer tokens in Authorization headers
-  - Common secret patterns (passwords, tokens, secrets)
-- The redaction uses regex patterns to find and replace sensitive data with `[REDACTED]`.
-- This prevents accidental credential leakage in log aggregation systems (e.g., Loki, CloudWatch).
+### Docker Container Security
+- The production `docker-compose.yml` mounts the kubeconfig directory **read-only** (`:ro`).
+- The container runs with the default non-root user where possible.
+- The `extra_hosts` entry (`host.docker.internal:host-gateway`) is only needed for local development with k3d — remove it in production deployments.
 
-### No Sensitive Data in Logs
-- Connector errors log only: connector name, error type, and duration.
-- Rate limit hits log only: hashed IP and timestamp.
-- LLM errors log only: error type and status code.
-- Never log raw API keys, tokens, or user messages.
+### Network Security
+- The `/chat` endpoint is rate-limited to 20 requests per minute per IP.
+- All connector communication should be over HTTPS in production.
+- Consider deploying behind a reverse proxy (e.g., Nginx, Traefik) for additional security layers (TLS termination, IP whitelisting, WAF).
 
-## 6. Docker Security
+## 6. Logging Security
 
-### Multi-stage Build
-- The `Dockerfile` uses a multi-stage build:
-  - **Builder stage**: Installs all dependencies with `npm ci` and compiles TypeScript.
-  - **Production stage**: Copies only the compiled `dist/` and installs production dependencies with `npm ci --only=production`, then cleans the npm cache.
-- This minimizes the final image size and excludes development tools and source code.
+### Log Sanitization
+- All error logs are sanitized to remove sensitive information before being written.
+- The `sanitizeLog()` function uses regex patterns to redact:
+  - API keys and tokens (strings of 20+ alphanumeric/underscore/hyphen characters)
+  - Bearer tokens in HTTP headers
+- Rate limit hits are logged with a **hashed IP** (SHA-256) rather than the raw IP address, protecting user privacy.
 
-### Minimal Base Image
-- The production stage uses `node:20-alpine` as the base image, which is a minimal Linux distribution.
-- Only `curl` is added (via `apk add --no-cache curl`) for Docker healthchecks.
-- No other packages or tools are installed in the production image.
+## 7. Dependency Security
 
-### Healthchecks
-- The `argus-ai` service in `docker-compose.yml` has a healthcheck: `curl -sf http://localhost:3000/health`
-- The `redis` service has a healthcheck: `redis-cli ping`
-- Healthchecks ensure containers are actually serving traffic before they are considered healthy.
+### Regular Updates
+- Keep dependencies up to date, especially `@kubernetes/client-node` and LLM client libraries.
+- Monitor for security advisories related to the `@kubernetes/client-node` library.
+- Use `npm audit` regularly to check for known vulnerabilities.
 
-### `.dockerignore`
-- The `.dockerignore` prevents `node_modules`, `dist`, `.git`, `.env`, `.env.*`, `coverage`, and `tests` from being included in Docker build context.
-- This is critical for security (prevents leaking `.env` files) and performance (smaller build context).
-
-## 7. Deployment Security
-
-### Production Checklist
-Before deploying to production:
-- [ ] Use Kubernetes Secrets or a secrets manager for all sensitive environment variables
-- [ ] Configure Redis with a password and TLS
-- [ ] Disable Grafana anonymous admin access (dev stack only)
-- [ ] Use TLS/HTTPS for all external endpoints
-- [ ] Set `NODE_ENV=production`
-- [ ] Configure network policies to restrict pod-to-pod communication
-- [ ] Use read-only service accounts for Kubernetes connector
-- [ ] Enable audit logging for all connectors
-- [ ] Regularly rotate API keys and tokens
-- [ ] Monitor health endpoints and set up alerts
+### Minimal Dependencies
+- Argus AI uses a minimal set of carefully chosen dependencies to reduce the attack surface.
+- New dependencies should be evaluated for security posture before addition.
