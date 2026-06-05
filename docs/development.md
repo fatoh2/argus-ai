@@ -63,6 +63,8 @@ This guide provides instructions for setting up your development environment, ru
     # Edit .env — set DEEPSEEK_API_KEY=your-key-here
     ```
 
+    > **Note**: Only `DEEPSEEK_API_KEY` is required. The Gemini fallback (`GEMINI_API_KEY`) is optional — if left unset, the app boots normally and uses DeepSeek as the sole LLM. No crash, no error.
+
 6.  **Run Locally with Docker Compose**:
 
     **Option A — Dev stack (observability + hot reload)**:

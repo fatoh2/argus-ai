@@ -1,17 +1,17 @@
 # Argus AI
 
-Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by DeepSeek V3 (with optional Gemini fallback), it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
+Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by DeepSeek V3 (with truly optional Gemini fallback — no crash if unconfigured), it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
 ## Features
 
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
 - **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
-- **Graceful Degradation**: All connectors handle missing environment variables, timeouts, and failures gracefully — if a service is unreachable or unconfigured, the connector operates in offline mode and returns structured empty/offline results instead of crashing. The LLM receives a clear message that the service is unavailable.
+- **Graceful Degradation**: All connectors handle missing environment variables, timeouts, and failures gracefully — if a service is unreachable or unconfigured, the connector operates in offline mode and returns structured empty/offline results instead of crashing. The LLM receives a clear message that the service is unavailable. The Gemini fallback LLM is also optional — if `GEMINI_API_KEY` is not set, the service marks itself unavailable at startup instead of crashing the entire application.
 - **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
 - **Input Validation & Sanitization**: The `/chat` endpoint validates message length (max 4000 characters), strips control characters and null bytes, and rejects empty messages with a `400 Bad Request`.
 - **Rate Limited API**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
-- **Real AI Responses**: The `/chat` endpoint is wired to the LLM service — queries return real AI-generated answers powered by DeepSeek V3 (with optional Gemini fallback), not stubs. Chat history is preserved across turns for contextual conversations.
+- **Real AI Responses**: The `/chat` endpoint is wired to the LLM service — queries return real AI-generated answers powered by DeepSeek V3 (with truly optional Gemini fallback — gracefully skipped if `GEMINI_API_KEY` is not set), not stubs. Chat history is preserved across turns for contextual conversations.
 - **LLM Error Resilience**: LLM calls have a 30-second hard timeout (returns `504 Gateway Timeout`), automatic retry on 5xx errors (up to 1 retry), and a 50k-token prompt limit guard that truncates oldest history first. A `GET /health/llm` endpoint provides LLM health monitoring with latency tracking.
 - **LLM Error Classification**: LLM errors are mapped to appropriate HTTP status codes — rate limits return `429 Too Many Requests`, auth failures return `401 Unauthorized`, and server errors return `502 Bad Gateway`.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
@@ -116,7 +116,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 | `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | **Yes** | — |
 | `DEEPSEEK_MODEL` | DeepSeek model override (optional) | No | `deepseek-chat` |
 | `DEEPSEEK_URL` | DeepSeek API endpoint override (optional) | No | `https://api.deepseek.com/chat/completions` |
-| `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No | — |
+| `GEMINI_API_KEY` | Google Gemini API key (truly optional fallback — app boots fine without it) | No | — |
 | `REDIS_URL` | Redis connection string for queue/job processing | No | `redis://localhost:6379` |
 | `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
 | `LLM_MAX_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |

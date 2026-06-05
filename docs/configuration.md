@@ -30,6 +30,7 @@ Here's a list of environment variables used:
 |---|---|---|---|
 | `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | **Yes** | — |
 | `DEEPSEEK_URL` | DeepSeek API endpoint | No | `https://api.deepseek.com/chat/completions` |
+| `GEMINI_API_KEY` | Google Gemini API key (truly optional fallback — app boots fine without it) | No | — |
 | `PORT` | HTTP server port | No | `3000` |
 | `NODE_ENV` | Environment (development/production) | No | `development` |
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | No | `30000` |
@@ -48,7 +49,7 @@ Here's a list of environment variables used:
 
 ## LLM Configuration
 
-The LLM service (`LlmService`) is configurable via environment variables:
+The LLM service (`LlmService`) is configurable via environment variables. The Gemini fallback is truly optional — if `GEMINI_API_KEY` is not set, the Gemini service marks itself unavailable at startup and the app boots normally using only DeepSeek.
 
 | Variable | Description | Default |
 |---|---|---|

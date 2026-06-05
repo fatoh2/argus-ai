@@ -33,9 +33,9 @@ deepseek:
 
 ### `gemini` (optional fallback)
 
-Configuration for the Google Gemini API (optional fallback LLM).
+Configuration for the Google Gemini API (optional fallback LLM). If `GEMINI_API_KEY` is not set, the Gemini service marks itself unavailable at startup instead of crashing — the app boots and operates normally using DeepSeek as the primary LLM.
 
--   `api_key`: Your Gemini API key. Populated via environment variable (e.g., `${GEMINI_API_KEY}`).
+-   `api_key`: Your Gemini API key. Populated via environment variable (e.g., `${GEMINI_API_KEY}`). **Optional** — leave empty to skip the Gemini fallback entirely.
 -   `model`: The Gemini model to use (e.g., `gemini-1.5-flash`).
 
 Example:

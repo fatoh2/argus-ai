@@ -2,12 +2,12 @@
 
 ## Role
 You build and maintain Argus AI: an AI infrastructure assistant powered by DeepSeek V3
-(primary) with optional Gemini 1.5 Flash fallback, using OpenAI-compatible API tool use,
+(primary) with truly optional Gemini 1.5 Flash fallback (no key = no crash, app uses DeepSeek only), using OpenAI-compatible API tool use,
 with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD,
 and optionally argus-monitor's database.
 
 ## Stack
-- **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (optional fallback)
+- **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (truly optional fallback — `isAvailable()` gates usage, no crash without key)
 - **Backend**: NestJS + TypeScript
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
@@ -74,7 +74,7 @@ src/
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
-  llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
+  llm/                    # LLM integration (DeepSeek V3 primary, Gemini truly optional fallback via isAvailable())
     llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
@@ -83,7 +83,7 @@ src/
     deepseek/             # DeepSeek V3 API client (primary LLM)
       deepseek.service.ts
       deepseek.service.spec.ts  # Unit tests for DeepSeek API client
-    gemini/               # Google Gemini API client (optional fallback)
+    gemini/               # Google Gemini API client (truly optional fallback — isAvailable() gates usage, no crash without key)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
