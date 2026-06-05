@@ -18,15 +18,15 @@ describe('KubernetesConnector', () => {
   });
 
   describe('listPods', () => {
-    it('should return empty array by default', async () => {
+    it('should return structured offline status by default', async () => {
       const result = await connector.listPods();
-      expect(result).toEqual([]);
+      expect(result).toEqual([{ status: 'connector offline', reason: 'KUBECONFIG not configured' }]);
     });
 
     it('should return structured error on timeout, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'kubernetes',
-        async (_signal) => {
+        async () => {
           await new Promise((resolve) => setTimeout(resolve, 500));
           return [];
         },
@@ -42,7 +42,7 @@ describe('KubernetesConnector', () => {
     it('should return structured error on failure, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'kubernetes',
-        async (_signal) => {
+        async () => {
           throw new Error('API server unreachable');
         },
       );
@@ -61,11 +61,10 @@ describe('KubernetesConnector', () => {
       expect(result).toBe(true);
     });
 
-    it('should return false when listPods returns structured error', async () => {
-      jest.spyOn(connector, 'listPods').mockResolvedValue({
-        error: 'kubernetes unavailable',
-        data: null,
-      });
+    it('should return false when listPods returns structured offline status', async () => {
+      jest.spyOn(connector, 'listPods').mockResolvedValue([
+        { status: 'connector offline', reason: 'kubernetes unavailable' },
+      ]);
       const result = await connector.isHealthy();
       expect(result).toBe(false);
     });

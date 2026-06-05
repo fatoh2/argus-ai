@@ -29,7 +29,7 @@ describe('PrometheusConnector', () => {
     it('should return structured error on timeout, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'prometheus',
-        async (_signal) => {
+        async () => {
           await new Promise((resolve) => setTimeout(resolve, 500));
           return { data: { result: [] } };
         },
@@ -45,7 +45,7 @@ describe('PrometheusConnector', () => {
     it('should return structured error on failure, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'prometheus',
-        async (_signal) => {
+        async () => {
           throw new Error('Prometheus API unreachable');
         },
       );
@@ -66,7 +66,7 @@ describe('PrometheusConnector', () => {
     it('should return structured error on timeout, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'prometheus',
-        async (_signal) => {
+        async () => {
           await new Promise((resolve) => setTimeout(resolve, 500));
           return { data: { result: [] } };
         },
@@ -82,7 +82,7 @@ describe('PrometheusConnector', () => {
     it('should return structured error on failure, does not throw', async () => {
       const result = await withConnectorErrorHandling(
         'prometheus',
-        async (_signal) => {
+        async () => {
           throw new Error('Prometheus range query failed');
         },
       );
