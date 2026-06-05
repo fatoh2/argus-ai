@@ -31,30 +31,76 @@ export class DeepSeekService {
   async chat(
     message: string,
     history: Array<{ role: string; content: string }> = [],
+    options: {
+      tools?: any[];
+      executeTool?: (name: string, args: Record<string, any>) => Promise<string>;
+    } = {},
   ): Promise<string> {
     if (!this.apiKey) throw new Error('DEEPSEEK_API_KEY is not configured');
 
-    const messages = [
+    const messages: any[] = [
       { role: 'system', content: this.systemPrompt },
       ...history,
       { role: 'user', content: message },
     ];
 
-    const response = await fetch(this.baseUrl, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${this.apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ model: this.model, messages, max_tokens: 2000, temperature: 0.3 }),
-    });
+    const hasTools = !!(options.tools?.length && options.executeTool);
+    const MAX_TOOL_ITERATIONS = 5;
 
-    if (!response.ok) {
-      const body = await response.text();
-      throw new Error(`DeepSeek ${response.status}: ${body.slice(0, 200)}`);
+    // Agentic loop: the model may call tools repeatedly before producing
+    // a final answer. Each iteration sends the running conversation
+    // (including any tool results) back to the model.
+    for (let i = 0; i <= MAX_TOOL_ITERATIONS; i++) {
+      const body: Record<string, unknown> = {
+        model: this.model,
+        messages,
+        max_tokens: 2000,
+        temperature: 0.3,
+      };
+      if (hasTools) {
+        body.tools = options.tools;
+        body.tool_choice = 'auto';
+      }
+
+      const response = await fetch(this.baseUrl, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${this.apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!response.ok) {
+        const errBody = await response.text();
+        throw new Error(`DeepSeek ${response.status}: ${errBody.slice(0, 200)}`);
+      }
+
+      const data = (await response.json()) as {
+        choices: Array<{ message: { content: string; tool_calls?: any[] } }>;
+      };
+      const msg = data.choices?.[0]?.message;
+      if (!msg) return 'No response generated.';
+
+      // If the model requested tool calls, execute them and loop again.
+      if (hasTools && msg.tool_calls?.length && i < MAX_TOOL_ITERATIONS) {
+        messages.push(msg); // assistant turn carrying the tool_calls
+        for (const tc of msg.tool_calls) {
+          let parsedArgs: Record<string, any> = {};
+          try {
+            parsedArgs = tc.function?.arguments ? JSON.parse(tc.function.arguments) : {};
+          } catch {
+            parsedArgs = {};
+          }
+          const result = await options.executeTool!(tc.function.name, parsedArgs);
+          messages.push({ role: 'tool', tool_call_id: tc.id, content: result });
+        }
+        continue;
+      }
+
+      return msg.content?.trim() || 'No response generated.';
     }
 
-    const data = (await response.json()) as { choices: Array<{ message: { content: string } }> };
-    return data.choices?.[0]?.message?.content?.trim() || 'No response generated.';
+    return 'Stopped after too many tool iterations.';
   }
 }
