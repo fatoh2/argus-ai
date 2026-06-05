@@ -25,7 +25,16 @@ export class KubernetesConnector {
       return [];
     } catch (e: any) {
       this.logger.error(`listPods failed: ${e.message}`);
-      return [];
+      return [{ status: 'connector offline', reason: e.message }];
+    }
+  }
+
+  async isHealthy(): Promise<boolean> {
+    try {
+      const pods = await this.listPods();
+      return Array.isArray(pods) && !pods.some((pod) => pod?.status === 'connector offline');
+    } catch {
+      return false;
     }
   }
 
