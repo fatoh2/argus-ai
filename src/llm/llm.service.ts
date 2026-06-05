@@ -51,8 +51,8 @@ export class LlmService {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
 
-      // Try Gemini fallback if available
-      if (this.gemini && !msg.includes('timed out')) {
+      // Try Gemini fallback if available (key configured)
+      if (this.gemini?.isAvailable() && !msg.includes('timed out')) {
         this.logger.warn(`DeepSeek failed, trying Gemini fallback: ${redact(msg)}`);
         try {
           const fallbackResult = await Promise.race([
