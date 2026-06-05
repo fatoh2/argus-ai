@@ -1,9 +1,10 @@
 # Argus AI
 
-Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by DeepSeek V3 (with truly optional Gemini fallback — no crash if unconfigured), it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
+Argus AI is an intelligent assistant designed to help DevOps teams understand and troubleshoot their infrastructure using natural language. Powered by DeepSeek V3 (with optional Gemini fallback), it connects to your existing Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions instances to provide real-time insights, incident summaries, and diagnostic information.
 
 ## Features
 
+- **Built-in Chat Dashboard**: A web chat UI is served at `http://localhost:3000/` — no separate frontend build step. Just open the URL in a browser and start asking questions. The dashboard features message bubbles, a live `/health` status indicator, clickable example prompts, and code-block rendering.
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
 - **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
@@ -54,95 +55,76 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```bash
     bash scripts/setup.sh
     ```
-    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs dependencies, and pulls Docker images. After it completes, skip to step 6 to run the app.
+    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs dependencies, and pulls Docker images. After it completes, skip ahead to step 6.
 
-    > **Note**: If you prefer to configure things manually, follow steps 4–6 instead.
+    > **Note**: If you prefer to configure things manually, follow steps 4–7 instead.
 
-4.  **Configure your connectors**:
-    Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
-    ```bash
-    cp config.example.yaml config.yaml
-    ```
-    **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${DEEPSEEK_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
-    **Never commit `config.yaml` to Git if it contains sensitive information!**
-
-    For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
-
-5.  **Install dependencies**:
+4.  **Install dependencies** (manual alternative):
     ```bash
     npm install
     ```
 
-6.  **Run locally (for development/testing)**:
-
-    **Option A — Makefile (recommended, includes full observability stack)**:
+5.  **Configure Environment**:
+    Copy `.env.example` to `.env` and fill in your DeepSeek API key:
     ```bash
-    make up
+    cp .env.example .env
+    # Edit .env — set DEEPSEEK_API_KEY=your-key-here
     ```
-    This starts the Docker dev stack (Prometheus, Loki, Grafana) and the NestJS app in watch mode. See the [Development Guide](docs/development.md) for more options.
 
-    **Option B — Production stack (Redis + argus-ai)**:
+    > **Note**: Only `DEEPSEEK_API_KEY` is required. The Gemini fallback (`GEMINI_API_KEY`) is optional — if left unset, the app boots normally and uses DeepSeek as the sole LLM.
+
+6.  **Run with Docker Compose**:
     ```bash
-    docker compose up -d
+    docker compose up -d --build
     ```
-    This starts Redis and the argus-ai app with healthchecks. Verify with:
+
+    This starts Redis (for queue/job processing) and the Argus AI app. The app waits for Redis to be healthy before starting.
+
+7.  **Open the Chat Dashboard**:
+    ```bash
+    # Open in your browser
+    open http://localhost:3000
+    ```
+    You'll see the Argus AI chat dashboard — a dark-themed UI with a live health status indicator and clickable example prompts. Start typing your infrastructure questions.
+
+    You can also verify the API directly:
     ```bash
     curl http://localhost:3000/health
-    # {"status":"ok","timestamp":"2025-01-01T00:00:00.000Z","connectors":{"kubernetes":true,"prometheus":true,"loki":true,"argocd":true}}
     ```
 
-    **Option C — Node.js only**:
-    ```bash
-    npm run start:dev
-    ```
-    This will start the NestJS backend alone, typically on `http://localhost:3000`. You will need a separate Redis, Prometheus, and Loki instance.
+## API Reference
 
-7.  **Start Querying!**
-    Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
+### `GET /`
+Serves the Argus AI chat dashboard — a single-page web UI for interacting with the assistant via a browser.
 
-    ```bash
-    curl -X POST http://localhost:3000/chat \
-        -H "Content-Type: application/json" \
-        -d '{"message": "What is the status of my web-app deployment?"}'
-    ```
+### `POST /chat`
+Send a natural language query to Argus AI.
 
-    **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
+**Request body**:
+```json
+{
+  "message": "What is the status of my web-app deployment?"
+}
+```
 
+**Response**: Returns the AI-generated answer as a JSON object with the assistant's reply.
 
-## Environment Variables
+**Rate limit**: 20 requests per minute per IP.
 
-| Variable | Description | Required | Default |
-|---|---|---|---|
-| `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | **Yes** | — |
-| `DEEPSEEK_MODEL` | DeepSeek model override (optional) | No | `deepseek-chat` |
-| `DEEPSEEK_URL` | DeepSeek API endpoint override (optional) | No | `https://api.deepseek.com/chat/completions` |
-| `GEMINI_API_KEY` | Google Gemini API key (truly optional fallback — app boots fine without it) | No | — |
-| `REDIS_URL` | Redis connection string for queue/job processing | No | `redis://localhost:6379` |
-| `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
-| `LLM_MAX_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
-| `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
-| `KUBECONFIG` | Path to kubeconfig file | No | (empty — in-cluster config) |
-| `PROMETHEUS_URL` | Prometheus URL | No | (empty — offline mode) |
-| `LOKI_URL` | Loki URL | No | (empty — offline mode) |
-| `ARGOCD_URL` | ArgoCD URL | No | (empty — offline mode) |
-| `ARGOCD_TOKEN` | ArgoCD auth token | No | (empty — offline mode) |
-| `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No | — |
-| `ARGUS_MONITOR_DB_URL` | Argus Monitor DB connection string | No | — |
+### `GET /health`
+Returns a detailed health report with per-connector status.
 
-## Makefile Commands
+### `GET /health/llm`
+Returns LLM health status with latency tracking.
 
-| Command | Description |
-|---|---|
-| `make up` | Start Docker dev stack + NestJS watch mode |
-| `make down` | Stop Docker dev stack |
-| `make clean` | Stop and remove all containers, networks, and volumes |
-| `make check` | Type-check (`tsc --noEmit`) + lint |
-| `make test` | Run all tests (`jest --forceExit`) |
-| `make test-local` | Boot full stack → health check → tsc → tests → teardown |
-| `make chat MSG="hello"` | Send a message to the chat API |
-| `make health` | Check LLM health endpoint (`GET /health/llm`) |
-| `make logs` | Tail Docker logs |
-| `make help` | Show all available commands |
+## Architecture
+
+Argus AI is a NestJS application that:
+
+1.  **Serves a chat dashboard** at `GET /` via `NestExpressApplication.useStaticAssets()` — the UI is a single `public/index.html` file with vanilla JavaScript (no build step, no framework).
+2.  **Accepts natural language queries** via `POST /chat` — validates and sanitizes input, then routes to the LLM service.
+3.  **Routes queries to the LLM** (DeepSeek V3 primary, Gemini fallback) — the LLM decides which connectors to call and synthesizes the results.
+4.  **Connects to infrastructure** via read-only connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions) — each connector wraps API calls with graceful degradation and structured error handling.
 
 ## Project Structure
 
@@ -152,9 +134,11 @@ docker-compose.yml         # Production stack: Redis + argus-ai with healthcheck
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
 Dockerfile                 # Multi-stage build (npm ci, curl for healthcheck, cache clean)
 .env.example               # Template — copy to .env, never commit .env
+public/
+  index.html               # Chat dashboard UI (vanilla JS, served at /)
 scripts/
   setup.sh                 # One-command local setup (prerequisites, .env, deps, Docker images)
-Makefile                   # Dev command shortcuts
+Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
 docker/
   prometheus/
     prometheus.yml         # Prometheus config — scrapes itself + argus-ai
@@ -166,23 +150,19 @@ docker/
     dashboards/
       dashboards.yaml      # Dashboard provisioning config
 src/
-  app.controller.ts        # GET / — root endpoint (hello)
-  health.controller.ts    # GET /health — detailed health report (ok/degraded/unhealthy)
-  health.service.ts       # Aggregates connector health checks
-  chat/
-    chat.integration.spec.ts  # Integration tests (boots stack, hits /health, validates chat)
-  llm/deepseek/
-    deepseek.service.spec.ts  # Unit tests for DeepSeek API client
+  main.ts                  # Bootstrap — NestExpressApplication with useStaticAssets for dashboard
+  app.module.ts            # Root module
+  ...
 ```
 
-## Documentation
+## Development
 
-- [Development Guide](docs/development.md) — local setup, testing, project structure
-- [Configuration](docs/configuration.md) — environment variables and config.yaml reference
-- [Connectors](docs/connectors.md) — Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions
-- [Example Queries](docs/examples.md) — natural language query examples
-- [Security Best Practices](docs/security.md) — deployment security, input validation, safe logging
+See [docs/development.md](docs/development.md) for local development setup, testing, and contribution guidelines.
 
-## License
+## Configuration
 
-MIT
+See [docs/configuration.md](docs/configuration.md) for all configuration options.
+
+## Security
+
+See [docs/security.md](docs/security.md) for security best practices.

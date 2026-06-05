@@ -8,7 +8,7 @@ and optionally argus-monitor's database.
 
 ## Stack
 - **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (truly optional fallback — `isAvailable()` gates usage, no crash without key)
-- **Backend**: NestJS + TypeScript
+- **Backend**: NestJS + TypeScript (NestExpressApplication for static asset serving)
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
@@ -17,6 +17,7 @@ and optionally argus-monitor's database.
 - **Local Dev**: Docker Compose (`docker-compose.dev.yml`) with Prometheus, Loki, Grafana
 - **Production Stack**: Docker Compose (`docker-compose.yml`) with Redis + argus-ai (healthchecks on both)
 - **Dev Shortcuts**: `Makefile` with `make up`, `make down`, `make clean`, `make check`, `make test`, `make test-local`, `make chat`, `make health`, `make logs`
+- **Chat Dashboard**: Single-page web UI at `GET /` served via `useStaticAssets` from `public/index.html` (vanilla JS, no build step)
 
 ## Standing Rules
 
@@ -36,8 +37,10 @@ If `make test-local` exists, also run that as the final gate.
 .dockerignore              # Prevents node_modules, .env, dist from entering Docker images
 docker-compose.yml         # Production stack: Redis + argus-ai with healthchecks
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
-Dockerfile                 # Multi-stage build (npm ci, curl for healthcheck, cache clean)
+Dockerfile                 # Multi-stage build (npm ci, curl for healthcheck, cache clean, copies public/)
 .env.example               # Template — copy to .env, never commit .env
+public/
+  index.html               # Chat dashboard UI (vanilla JS, served at / via useStaticAssets)
 scripts/
   setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
 Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
@@ -57,7 +60,7 @@ src/
   health.service.ts       # Aggregates connector health checks
   app.controller.ts       # GET / — root endpoint (hello)
   app.service.ts          # Core application service
-  main.ts                 # Bootstrap — global ValidationPipe with whitelist
+  main.ts                 # Bootstrap — NestExpressApplication, global ValidationPipe, useStaticAssets('public')
   chat/                   # Chat API module (REST endpoint)
     chat.controller.ts    # POST /chat — input sanitization (strips control chars)
     chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
@@ -115,77 +118,30 @@ via `GET /health`. It calls each connector's `isHealthy()` and returns:
 }
 ```
 
-Overall status: `ok` (all healthy), `degraded` (some healthy), or `unhealthy` (none healthy).
-Each connector's `isHealthy()` performs a real connectivity check against its target service.
-Unconfigured connectors (missing env vars) return `false` immediately without a network call.
+Overall status: `ok` (all healthy), `degraded` (some unhealthy), `unhealthy` (all unhealthy).
 
-### Graceful Degradation Pattern
+## Chat Dashboard
 
-Every connector method must use `withConnectorErrorHandling`:
+The chat dashboard is a single-page HTML/JS application served at `GET /`:
 
-```typescript
-import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
+- **Location**: `public/index.html`
+- **How it's served**: `NestExpressApplication.useStaticAssets(join(__dirname, '..', 'public'))` in `src/main.ts`
+- **Runtime**: The `Dockerfile` copies `public/` into the runtime image alongside `dist/`
+- **Features**: Message bubbles, live `/health` status indicator (green/red dot), clickable example prompts, code-block rendering, typing indicator
+- **No build step**: Vanilla JavaScript, no framework, no separate frontend container
+- **API calls**: The dashboard calls `POST /chat` on the same origin
 
-@Injectable()
-export class MyConnector {
-  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
-    return withConnectorErrorHandling('my-connector', async (signal) => {
-      // Actual connector logic
-      // Pass signal to HTTP requests for proper cancellation on timeout
-      return await this.api.fetchData({ signal });
-    });
-  }
+## Chat API
 
-  async isHealthy(): Promise<boolean> {
-    try {
-      const result = await this.getData();
-      return !(Array.isArray(result) && result.some((r) => r?.status === 'connector offline'));
-    } catch {
-      return false;
-    }
-  }
-}
-```
-
-The utility provides:
-- **10-second timeout with AbortController** (configurable via third parameter) — cancels the underlying HTTP request on timeout
-- **Structured error responses**: `{ error: "<name> unavailable", data: null }`
-- **Safe logging**: connector name, error type, duration — API keys/tokens auto-redacted via `sanitizeLog()`
-
-### AbortSignal Parameter
-
-The factory function receives an `AbortSignal` as its first argument:
-
-```typescript
-fn: (signal: AbortSignal) => Promise<T>
-```
-
-Always pass `signal` to HTTP requests (e.g., `fetch(url, { signal })`) so the request is properly cancelled when the timeout fires.
+### `POST /chat`
+- **Input validation**: `IsString()`, `MaxLength(4000)`, strips control characters and null bytes
+- **Rate limit**: 20 requests per minute per IP (logged with hashed IP)
+- **LLM routing**: Primary = DeepSeek V3, fallback = Gemini (if configured)
+- **Error mapping**: Timeout → 504, Rate limit → 429, Auth failure → 401, Server error → 502
 
 ## Testing
 
-### Test files
-
-| File | Type | What it tests |
-|---|---|---|
-| `src/chat/chat.integration.spec.ts` | Integration | `GET /health`, `POST /chat` validation |
-| `src/llm/deepseek/deepseek.service.spec.ts` | Unit | DeepSeek API payload building, error handling |
-| `src/llm/llm.service.spec.ts` | Unit | LLM service tool-use loop, timeout, retry |
-| `src/llm/llm.controller.spec.ts` | Unit | LLM health check endpoint |
-| `src/connectors/utils/connector-error.spec.ts` | Unit | Graceful degradation utility |
-| `src/connectors/kubernetes.connector.spec.ts` | Unit | Kubernetes connector methods |
-| `src/connectors/prometheus/prometheus.connector.spec.ts` | Unit | Prometheus connector methods |
-| `src/health.service.spec.ts` | Unit | HealthService connector aggregation (ok/degraded/unhealthy) |
-
-### Running tests
-
 ```bash
-make test       # jest --forceExit
-make test-local # Boot Docker stack → health check → tsc → tests → teardown
+make check    # tsc --noEmit + lint
+make test     # jest --forceExit
 ```
-
-## Docker Build
-
-- **Multi-stage**: `npm ci` in builder, `npm ci --only=production && npm cache clean --force` in runtime
-- **Healthchecks**: `curl` installed via `apk add --no-cache curl` for Docker healthchecks
-- **`.dockerignore`**: Excludes `node_modules`, `dist`, `.env`, `coverage`, `tests`, `*.md`

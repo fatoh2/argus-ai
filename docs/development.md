@@ -90,6 +90,9 @@ This guide provides instructions for setting up your development environment, ru
     # App health
     curl http://localhost:3000/health
 
+    # Open the chat dashboard in your browser
+    open http://localhost:3000
+
     # Prometheus
     curl http://localhost:9090/-/healthy
 
@@ -139,6 +142,20 @@ This guide provides instructions for setting up your development environment, ru
     docker compose down
     # Or use: make clean  (removes volumes too)
     ```
+
+8.  **Open the Chat Dashboard**:
+    Navigate to `http://localhost:3000` in your browser. The chat dashboard is served as a static HTML/JS file — no separate frontend build step required. You'll see example prompts and a live health status indicator.
+
+9.  **Start Querying!**
+    Once the backend is running, you can interact with Argus AI via the web dashboard or its API:
+
+    ```bash
+    curl -X POST http://localhost:3000/chat \
+        -H "Content-Type: application/json" \
+        -d '{"message": "What is the status of my web-app deployment?"}'
+    ```
+
+    > **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
 
 7.  **Run Locally without Docker (Node.js only)**:
 
@@ -207,8 +224,10 @@ The `test` script uses `jest --forceExit` to handle NestJS open handles that per
 .dockerignore              # Prevents node_modules, .env, dist from entering Docker images
 docker-compose.yml         # Production stack: Redis + argus-ai with healthchecks
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
-Dockerfile                 # Multi-stage build (npm ci, curl for healthcheck, cache clean)
+Dockerfile                 # Multi-stage build (npm ci, curl for healthcheck, cache clean, copies public/)
 .env.example               # Template — copy to .env, never commit .env
+public/
+  index.html               # Chat dashboard UI (vanilla JS, no build step)
 scripts/
   setup.sh                 # One-command local setup (prerequisites, .env, deps, Docker images)
 Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
@@ -229,7 +248,7 @@ src/
   health.service.ts       # Aggregates connector health checks
   app.controller.ts       # GET / — root endpoint (hello)
   app.service.ts          # Core application service
-  main.ts                 # Bootstrap — global ValidationPipe with whitelist + forbidNonWhitelisted
+  main.ts                 # Bootstrap — NestExpressApplication, global ValidationPipe, useStaticAssets('public')
   chat/                   # Chat API module (REST endpoint)
     chat.controller.ts    # POST /chat — input sanitization (strips control chars)
     chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
@@ -283,4 +302,5 @@ config.example.yaml       # Template — copy to config.yaml, never commit confi
 
 - The `Dockerfile` uses a multi-stage build: `npm ci` in the builder stage, then `npm ci --only=production && npm cache clean --force` in the runtime stage.
 - `curl` is installed in the runtime image (`apk add --no-cache curl`) for Docker healthchecks.
+- The `public/` directory (chat dashboard UI) is copied into the runtime image.
 - The `.dockerignore` file excludes `node_modules`, `dist`, `.env`, `coverage`, `tests`, and `*.md` from the Docker build context to keep images lean.
