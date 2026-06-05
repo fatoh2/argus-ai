@@ -129,7 +129,7 @@ This guide provides instructions for setting up your development environment, ru
     **Verify**:
     ```bash
     curl http://localhost:3000/health
-    # {"status":"ok"}
+    # {"status":"ok","timestamp":"2025-01-01T00:00:00.000Z","connectors":{"kubernetes":true,"prometheus":true,"loki":true,"argocd":true}}
     ```
 
     **Stop**:
@@ -223,7 +223,9 @@ docker/
 
 src/
   app.module.ts           # Root module — registers ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
-  app.controller.ts       # GET /health + GET /health/llm endpoints
+  health.controller.ts    # GET /health — detailed health report (ok/degraded/unhealthy)
+  health.service.ts       # Aggregates connector health checks
+  app.controller.ts       # GET / — root endpoint (hello)
   app.service.ts          # Core application service
   main.ts                 # Bootstrap — global ValidationPipe with whitelist + forbidNonWhitelisted
   chat/                   # Chat API module (REST endpoint)

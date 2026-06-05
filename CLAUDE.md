@@ -53,7 +53,9 @@ docker/
       dashboards.yaml      # Dashboard provisioning config
 src/
   app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
-  app.controller.ts       # GET /health + GET /health/llm endpoints
+  health.controller.ts    # GET /health — detailed health report (ok/degraded/unhealthy)
+  health.service.ts       # Aggregates connector health checks
+  app.controller.ts       # GET / — root endpoint (hello)
   app.service.ts          # Core application service
   main.ts                 # Bootstrap — global ValidationPipe with whitelist
   chat/                   # Chat API module (REST endpoint)
@@ -95,6 +97,28 @@ All connectors:
 - Are strictly read-only
 - **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
 
+### Health Aggregation
+
+The `HealthService` (in `src/health.service.ts`) aggregates health from all registered connectors
+via `GET /health`. It calls each connector's `isHealthy()` and returns:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "connectors": {
+    "kubernetes": true,
+    "prometheus": true,
+    "loki": true,
+    "argocd": true
+  }
+}
+```
+
+Overall status: `ok` (all healthy), `degraded` (some healthy), or `unhealthy` (none healthy).
+Each connector's `isHealthy()` performs a real connectivity check against its target service.
+Unconfigured connectors (missing env vars) return `false` immediately without a network call.
+
 ### Graceful Degradation Pattern
 
 Every connector method must use `withConnectorErrorHandling`:
@@ -115,7 +139,7 @@ export class MyConnector {
   async isHealthy(): Promise<boolean> {
     try {
       const result = await this.getData();
-      return !(result && typeof result === 'object' && 'error' in result);
+      return !(Array.isArray(result) && result.some((r) => r?.status === 'connector offline'));
     } catch {
       return false;
     }
@@ -151,6 +175,7 @@ Always pass `signal` to HTTP requests (e.g., `fetch(url, { signal })`) so the re
 | `src/connectors/utils/connector-error.spec.ts` | Unit | Graceful degradation utility |
 | `src/connectors/kubernetes.connector.spec.ts` | Unit | Kubernetes connector methods |
 | `src/connectors/prometheus/prometheus.connector.spec.ts` | Unit | Prometheus connector methods |
+| `src/health.service.spec.ts` | Unit | HealthService connector aggregation (ok/degraded/unhealthy) |
 
 ### Running tests
 

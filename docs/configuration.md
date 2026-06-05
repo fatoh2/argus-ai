@@ -68,7 +68,31 @@ The LLM service maps errors to appropriate HTTP status codes:
 | Server error (all retries exhausted) | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service unavailable after retries", error: "Bad Gateway" }` |
 | Generic LLM error | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service error", error: "Bad Gateway" }` |
 
-### Health Check
+### Connector Health Check
+
+The `GET /health` endpoint (served by `HealthController` / `HealthService`) aggregates the health of all registered connectors:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "connectors": {
+    "kubernetes": true,
+    "prometheus": true,
+    "loki": true,
+    "argocd": true
+  }
+}
+```
+
+The overall `status` is:
+- **`ok`** — all connectors healthy
+- **`degraded`** — some connectors unhealthy, at least one healthy
+- **`unhealthy`** — all connectors unhealthy
+
+Each connector's `isHealthy()` performs a real connectivity check. Unconfigured connectors (missing env vars) return `false` immediately without a network call.
+
+### LLM Health Check
 
 The `GET /health/llm` endpoint (in `LlmController`) returns:
 
@@ -109,7 +133,7 @@ The Kubernetes connector can operate in two modes:
 
 **Available Methods** (all wrapped with graceful degradation):
 
-- `isHealthy()` — Returns `false` immediately if `KUBECONFIG` not set; otherwise health check against the Kubernetes API
+- `isHealthy()` — Returns `false` immediately if `KUBECONFIG` not set; otherwise calls `listPods()` and returns `false` if any pod reports `connector offline` status
 - `listPods(namespace)` — List pods in a namespace
 - `getPodLogs(podName, namespace)` — Get logs for a specific pod
 - `describeDeployment(deploymentName, namespace)` — Describe a deployment

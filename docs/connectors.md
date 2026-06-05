@@ -4,6 +4,32 @@ Argus AI integrates with various infrastructure components to provide comprehens
 
 For the architectural principles governing connectors, including graceful degradation, error handling, and logging, please refer to the [CLAUDE.md](../CLAUDE.md) document.
 
+## Health Endpoint
+
+The `GET /health` endpoint (served by `HealthController` / `HealthService`) aggregates the health of all registered connectors and returns a summary:
+
+```json
+{
+  "status": "ok",
+  "timestamp": "2025-01-01T00:00:00.000Z",
+  "connectors": {
+    "kubernetes": true,
+    "prometheus": true,
+    "loki": true,
+    "argocd": true
+  }
+}
+```
+
+The overall `status` is determined as follows:
+- **`ok`** — all connectors report healthy
+- **`degraded`** — some connectors are unhealthy, but at least one is healthy
+- **`unhealthy`** — all connectors are unhealthy
+
+Each connector implements `isHealthy(): Promise<boolean>` which performs a real connectivity check against its target service. If the connector is unconfigured (missing environment variable), it returns `false` immediately without making a network call.
+
+The LLM has a separate dedicated health endpoint at `GET /health/llm` (served by `LlmController`), which returns latency tracking.
+
 ## Kubernetes Connector
 
 **Purpose**: Provides information about your Kubernetes cluster, including pod status, deployments, and events.
@@ -16,10 +42,10 @@ For the architectural principles governing connectors, including graceful degrad
 
 All public methods are wrapped with `withConnectorErrorHandling('kubernetes', ...)` and accept the `AbortSignal` parameter for consistency, though the underlying `@kubernetes/client-node` library handles its own cancellation.
 
-**Offline mode**: When the `KUBECONFIG` environment variable is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), `listPods()` returns an offline status object, and other methods return empty/offline results. A warning is logged at startup.
+**Offline mode**: When the `KUBECONFIG` environment variable is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), `listPods()` returns `[{ status: 'connector offline', reason: 'KUBECONFIG not configured' }]`, and other methods return empty/offline results. A warning is logged at startup. On API failure, `listPods()` also returns a structured offline status with the error message as the reason, instead of an empty array.
 
 **Available methods**:
-- `isHealthy()` — returns `false` immediately if `KUBECONFIG` not set; otherwise health check against the Kubernetes API
+- `isHealthy()` — returns `false` immediately if `KUBECONFIG` not set; otherwise calls `listPods()` and returns `false` if any pod reports `connector offline` status
 - `listPods(namespace)` — list pods in a namespace
 - `getPodLogs(podName, namespace)` — get logs for a specific pod
 - `describeDeployment(deploymentName, namespace)` — describe a deployment
@@ -45,7 +71,7 @@ kubernetes:
 **Offline mode**: When the `PROMETHEUS_URL` environment variable is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), and query methods return empty result sets. A warning is logged at startup.
 
 **Available methods**:
-- `isHealthy()` — returns `false` immediately if `PROMETHEUS_URL` not set; otherwise health check against the Prometheus API
+- `isHealthy()` — returns `false` immediately if `PROMETHEUS_URL` not set; otherwise calls `instantQuery('up')` and returns `true` if the query succeeds
 - `instantQuery(promql)` — execute an instant PromQL query
 - `rangeQuery(promql, start, end, step)` — execute a range query over time
 
@@ -70,7 +96,7 @@ prometheus:
 **Offline mode**: This connector inherits the offline behavior of its underlying connectors. If either `KUBECONFIG` or `PROMETHEUS_URL` is not set, the corresponding delegated methods return offline/empty results.
 
 **Available methods**:
-- `isHealthy()` — returns `true` if `listPods` succeeds
+- `isHealthy()` — returns `true` if `listPods` succeeds (no `connector offline` status in results)
 - `listPods(namespace)` — list pods via KubernetesConnector
 - `getPodLogs(podName, namespace)` — get pod logs via KubernetesConnector
 - `describeDeployment(deploymentName, namespace)` — describe a deployment via KubernetesConnector

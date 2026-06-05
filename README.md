@@ -19,7 +19,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **One-Command Setup**: Run `bash scripts/setup.sh` on a fresh clone to check prerequisites (Node.js v20+, npm, Docker), create `.env` from `.env.example`, install dependencies, and pull Docker images — all in one step.
 - **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster. A `Makefile` provides one-command shortcuts for common dev tasks (`make up`, `make check`, `make test`, `make test-local`, `make clean`, etc.).
 - **Production Stack**: A `docker-compose.yml` provides the production stack with Redis (redis:7) for queue/job processing. The app waits for Redis to be healthy before starting, and both services have Docker healthchecks configured.
-- **Health Endpoint**: `GET /health` returns `{ "status": "ok" }` — used by Docker healthchecks and load balancers.
+- **Health Endpoint**: `GET /health` returns a detailed health report with per-connector status (`ok`/`degraded`/`unhealthy`) — used by Docker healthchecks and load balancers. Each connector reports its own health via `isHealthy()`. The LLM has a dedicated `GET /health/llm` endpoint with latency tracking.
 - **Integration Tests**: Real integration tests boot the full Docker stack, hit the `/health` endpoint, and verify chat input validation end-to-end.
 - **`.dockerignore`**: Prevents `node_modules`, `dist`, `.env`, and test artifacts from being copied into Docker images, keeping builds lean and secure.
 
@@ -88,7 +88,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     This starts Redis and the argus-ai app with healthchecks. Verify with:
     ```bash
     curl http://localhost:3000/health
-    # {"status":"ok"}
+    # {"status":"ok","timestamp":"2025-01-01T00:00:00.000Z","connectors":{"kubernetes":true,"prometheus":true,"loki":true,"argocd":true}}
     ```
 
     **Option C — Node.js only**:
@@ -166,7 +166,9 @@ docker/
     dashboards/
       dashboards.yaml      # Dashboard provisioning config
 src/
-  app.controller.ts        # GET /health + GET /health/llm endpoints
+  app.controller.ts        # GET / — root endpoint (hello)
+  health.controller.ts    # GET /health — detailed health report (ok/degraded/unhealthy)
+  health.service.ts       # Aggregates connector health checks
   chat/
     chat.integration.spec.ts  # Integration tests (boots stack, hits /health, validates chat)
   llm/deepseek/
