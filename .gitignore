@@ -9,3 +9,5 @@ config.yaml
 
 # Prevent agents cloning repo inside itself
 argus-ai/
+
+.kube/
