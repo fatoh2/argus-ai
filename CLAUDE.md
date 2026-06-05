@@ -2,12 +2,12 @@
 
 ## Role
 You build and maintain Argus AI: an AI infrastructure assistant powered by DeepSeek V3
-(primary) with truly optional Gemini 1.5 Flash fallback (no key = no crash, app uses DeepSeek only), using OpenAI-compatible API tool use,
+(primary) with optional Gemini 1.5 Flash fallback, using OpenAI-compatible API tool use,
 with read-only connectors to Kubernetes, Prometheus, Loki, ArgoCD,
 and optionally argus-monitor's database.
 
 ## Stack
-- **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (truly optional fallback — `isAvailable()` gates usage, no crash without key)
+- **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (optional fallback)
 - **Backend**: NestJS + TypeScript (NestExpressApplication for static asset serving)
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
@@ -56,8 +56,7 @@ docker/
       dashboards.yaml      # Dashboard provisioning config
 src/
   app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
-  health.controller.ts    # GET /health — detailed health report (ok/degraded/unhealthy)
-  health.service.ts       # Aggregates connector health checks
+  app.controller.ts       # Health check endpoint
   app.controller.ts       # GET / — root endpoint (hello)
   app.service.ts          # Core application service
   main.ts                 # Bootstrap — NestExpressApplication, global ValidationPipe, useStaticAssets('public')
@@ -77,7 +76,7 @@ src/
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
-  llm/                    # LLM integration (DeepSeek V3 primary, Gemini truly optional fallback via isAvailable())
+  llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
     llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
@@ -86,7 +85,7 @@ src/
     deepseek/             # DeepSeek V3 API client (primary LLM)
       deepseek.service.ts
       deepseek.service.spec.ts  # Unit tests for DeepSeek API client
-    gemini/               # Google Gemini API client (truly optional fallback — isAvailable() gates usage, no crash without key)
+    gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -100,25 +99,7 @@ All connectors:
 - Are strictly read-only
 - **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
 
-### Health Aggregation
-
-The `HealthService` (in `src/health.service.ts`) aggregates health from all registered connectors
-via `GET /health`. It calls each connector's `isHealthy()` and returns:
-
-```json
-{
-  "status": "ok",
-  "timestamp": "2025-01-01T00:00:00.000Z",
-  "connectors": {
-    "kubernetes": true,
-    "prometheus": true,
-    "loki": true,
-    "argocd": true
-  }
-}
-```
-
-Overall status: `ok` (all healthy), `degraded` (some unhealthy), `unhealthy` (all unhealthy).
+, `degraded` (some unhealthy), `unhealthy` (all unhealthy).
 
 ## Chat Dashboard
 

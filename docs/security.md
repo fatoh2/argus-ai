@@ -81,7 +81,7 @@ The `/chat` endpoint implements multiple layers of input validation:
 
 ### Health Checks
 - Every connector implements an `isHealthy()` method for monitoring.
-- The application exposes `GET /health` for detailed health checks — returns per-connector status (`ok`/`degraded`/`unhealthy`) and is used by Docker healthchecks and load balancers.
+- The `GET /health` endpoint returns a simple `{ "status": "ok" }` when the server is running.
 - The LLM service exposes `GET /health/llm` for LLM-specific health monitoring with latency tracking.
 
 ## 4. API Security

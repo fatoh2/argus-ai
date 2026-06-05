@@ -30,7 +30,7 @@ Here's a list of environment variables used:
 |---|---|---|---|
 | `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | **Yes** | — |
 | `DEEPSEEK_URL` | DeepSeek API endpoint | No | `https://api.deepseek.com/chat/completions` |
-| `GEMINI_API_KEY` | Google Gemini API key (truly optional fallback — app boots fine without it) | No | — |
+| `GEMINI_API_KEY` | Google Gemini API key (optional fallback — app boots fine without it) | No | — |
 | `PORT` | HTTP server port | No | `3000` |
 | `NODE_ENV` | Environment (development/production) | No | `development` |
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | No | `30000` |
@@ -49,7 +49,7 @@ Here's a list of environment variables used:
 
 ## LLM Configuration
 
-The LLM service (`LlmService`) is configurable via environment variables. The Gemini fallback is truly optional — if `GEMINI_API_KEY` is not set, the Gemini service marks itself unavailable at startup and the app boots normally using only DeepSeek.
+The LLM service (`LlmService`) is configurable via environment variables. The Gemini fallback is optional — if `GEMINI_API_KEY` is not set, the Gemini service marks itself unavailable at startup and the app boots normally using only DeepSeek.
 
 | Variable | Description | Default |
 |---|---|---|
@@ -69,29 +69,15 @@ The LLM service maps errors to appropriate HTTP status codes:
 | Server error (all retries exhausted) | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service unavailable after retries", error: "Bad Gateway" }` |
 | Generic LLM error | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service error", error: "Bad Gateway" }` |
 
-### Connector Health Check
+### Health Check
 
-The `GET /health` endpoint (served by `HealthController` / `HealthService`) aggregates the health of all registered connectors:
+The `GET /health` endpoint returns a simple health check:
 
 ```json
 {
-  "status": "ok",
-  "timestamp": "2025-01-01T00:00:00.000Z",
-  "connectors": {
-    "kubernetes": true,
-    "prometheus": true,
-    "loki": true,
-    "argocd": true
-  }
+  "status": "ok"
 }
 ```
-
-The overall `status` is:
-- **`ok`** — all connectors healthy
-- **`degraded`** — some connectors unhealthy, at least one healthy
-- **`unhealthy`** — all connectors unhealthy
-
-Each connector's `isHealthy()` performs a real connectivity check. Unconfigured connectors (missing env vars) return `false` immediately without a network call.
 
 ### LLM Health Check
 

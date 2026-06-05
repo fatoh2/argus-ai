@@ -186,7 +186,7 @@ npm run test:cov
 npm run test:watch
 ```
 
-### Integration Tests
+### Test Files
 
 Integration tests are in `src/chat/chat.integration.spec.ts`. They boot the full Docker stack, hit the `/health` endpoint, and validate chat input validation end-to-end.
 
@@ -244,11 +244,9 @@ docker/
 
 src/
   app.module.ts           # Root module — registers ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
-  health.controller.ts    # GET /health — detailed health report (ok/degraded/unhealthy)
-  health.service.ts       # Aggregates connector health checks
-  app.controller.ts       # GET / — root endpoint (hello)
+  app.controller.ts       # GET / — serves chat dashboard (static assets), GET /health — simple health check
   app.service.ts          # Core application service
-  main.ts                 # Bootstrap — NestExpressApplication, global ValidationPipe, useStaticAssets('public')
+  main.ts                 # Bootstrap — global ValidationPipe with whitelist + forbidNonWhitelisted, serves public/ via useStaticAssets
   chat/                   # Chat API module (REST endpoint)
     chat.controller.ts    # POST /chat — input sanitization (strips control chars)
     chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard

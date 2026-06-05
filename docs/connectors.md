@@ -6,29 +6,22 @@ For the architectural principles governing connectors, including graceful degrad
 
 ## Health Endpoint
 
-The `GET /health` endpoint (served by `HealthController` / `HealthService`) aggregates the health of all registered connectors and returns a summary:
+The `GET /health` endpoint returns a simple health check:
 
 ```json
 {
-  "status": "ok",
-  "timestamp": "2025-01-01T00:00:00.000Z",
-  "connectors": {
-    "kubernetes": true,
-    "prometheus": true,
-    "loki": true,
-    "argocd": true
-  }
+  "status": "ok"
 }
 ```
 
-The overall `status` is determined as follows:
-- **`ok`** — all connectors report healthy
-- **`degraded`** — some connectors are unhealthy, but at least one is healthy
-- **`unhealthy`** — all connectors are unhealthy
+The LLM has a separate dedicated health endpoint at `GET /health/llm` (served by `LlmController`), which returns latency tracking:
 
-Each connector implements `isHealthy(): Promise<boolean>` which performs a real connectivity check against its target service. If the connector is unconfigured (missing environment variable), it returns `false` immediately without making a network call.
-
-The LLM has a separate dedicated health endpoint at `GET /health/llm` (served by `LlmController`), which returns latency tracking.
+```json
+{
+  "ok": true,
+  "latencyMs": 1234
+}
+```
 
 ## Kubernetes Connector
 
