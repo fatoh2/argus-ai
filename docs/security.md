@@ -35,12 +35,6 @@ This document outlines the security considerations and best practices for deploy
 - The dev stack uses default passwords and no TLS — it is intentionally insecure for ease of use.
 - For production, use the production Helm chart with proper authentication, TLS, and network policies.
 
-### Docker Compose Production Stack Security
-- The production `docker-compose.yml` includes Redis (redis:7) with no authentication configured by default.
-- **For production deployments**, configure Redis with a password (`requirepass`) and use TLS for connections.
-- The `argus-ai` service depends on Redis being healthy before starting, preventing race conditions.
-- Both services have Docker healthchecks configured to ensure service availability.
-
 ### `.dockerignore` Security
 - The `.dockerignore` file excludes `node_modules`, `dist`, `.git`, `.env`, `.env.*`, `coverage`, and `tests` from Docker builds.
 - This prevents accidental inclusion of sensitive files (like `.env` with API keys) in Docker images.
@@ -65,11 +59,13 @@ The `/chat` endpoint implements multiple layers of input validation:
 
 ### LLM Guardrails
 - In addition to input sanitization, Argus AI employs LLM-specific guardrails and prompt engineering techniques to minimize the risk of the LLM generating harmful, biased, or insecure responses. The DeepSeek V3 system prompt instructs the model to never reveal API keys, tokens, or sensitive configuration.
+- Tool calls are strictly **read-only** — the `ToolRegistryService` only routes to connector methods that query data, never mutate state.
 
 ## 3. Connector Interaction Security
 
 ### Read-Only Access
-- Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
+- Argus AI is designed to operate with **read-only** access to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
+- The `ToolRegistryService` only exposes read-only connector methods as LLM-callable tools.
 - Ensure that the credentials provided to Argus AI (e.g., Kubernetes service accounts, GitHub tokens) are scoped to the minimum necessary read-only permissions.
 
 ### Graceful Degradation with Safe Error Handling
@@ -80,9 +76,12 @@ The `/chat` endpoint implements multiple layers of input validation:
 - This ensures that even when a connector fails, no sensitive credentials are leaked in logs.
 
 ### Health Checks
-- Every connector implements an `isHealthy()` method for monitoring.
-- The `GET /health` endpoint returns a simple `{ "status": "ok" }` when the server is running.
-- The LLM service exposes `GET /health/llm` for LLM-specific health monitoring with latency tracking.
+- Every connector implements an `isHealthy()` method that verifies connectivity before executing queries.
+- If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
+- The LLM service also exposes `GET /health/llm` which returns `{ ok: boolean, latencyMs: number }`.
+
+### Timeout Protection
+- All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility.
 
 ## 4. API Security
 

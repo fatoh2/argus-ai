@@ -29,27 +29,25 @@ Here's a list of environment variables used:
 | Variable | Description | Required | Default |
 |---|---|---|---|
 | `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | **Yes** | — |
-| `DEEPSEEK_URL` | DeepSeek API endpoint | No | `https://api.deepseek.com/chat/completions` |
-| `GEMINI_API_KEY` | Google Gemini API key (optional fallback — app boots fine without it) | No | — |
-| `PORT` | HTTP server port | No | `3000` |
-| `NODE_ENV` | Environment (development/production) | No | `development` |
+| `DEEPSEEK_MODEL` | DeepSeek model override (optional) | No | `deepseek-chat` |
+| `DEEPSEEK_URL` | DeepSeek API endpoint override (optional) | No | `https://api.deepseek.com/chat/completions` |
+| `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No | — |
+| `KUBECONFIG` | Path to kubeconfig file for live Kubernetes queries | No | Offline mode |
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | No | `30000` |
 | `LLM_MAX_TOKENS` | Maximum estimated tokens before oldest history is truncated | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retry attempts on 5xx LLM server errors | No | `1` |
-| `REDIS_URL` | Redis connection string for queue/job processing | **Yes** | `redis://localhost:6379` |
-| `PROMETHEUS_URL` | URL of your Prometheus instance | No | (empty — offline/stub mode) |
-| `LOKI_URL` | URL of your Loki instance | No | (empty — offline/stub mode) |
-| `ARGOCD_URL` | URL of your ArgoCD instance | No | (empty — offline/stub mode) |
-| `ARGOCD_TOKEN` | Authentication token for ArgoCD | No | (empty — offline/stub mode) |
-| `KUBECONFIG` | Path to your Kubernetes kubeconfig file | No | (empty — in-cluster config) |
+| `PROMETHEUS_URL` | URL of your Prometheus instance | No | `http://localhost:9090` |
+| `LOKI_URL` | URL of your Loki instance | No | `http://localhost:3100` |
+| `ARGOCD_URL` | URL of your ArgoCD instance | No | `https://localhost:8080` |
+| `ARGOCD_AUTH_TOKEN` | Authentication token for ArgoCD | No | — |
 | `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No | — |
 | `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
 
-> **Note**: Connector URLs (`PROMETHEUS_URL`, `LOKI_URL`, `ARGOCD_URL`) default to empty strings. When left empty, the corresponding connectors operate in offline/stub mode and return structured errors instead of crashing. This allows the app to start and serve chat requests even when no infrastructure is connected.
+> **Note**: The Kubernetes connector uses `KUBECONFIG` (environment variable), not `kubeconfig_path` from `config.yaml`. This is because the kubeconfig path is typically different inside a Docker container vs. the host machine. When running via Docker Compose, set `KUBECONFIG=/kube/config` and mount your kubeconfig at `./.kube:/kube:ro`.
 
 ## LLM Configuration
 
-The LLM service (`LlmService`) is configurable via environment variables. The Gemini fallback is optional — if `GEMINI_API_KEY` is not set, the Gemini service marks itself unavailable at startup and the app boots normally using only DeepSeek.
+The LLM service (`LlmService`) is configurable via environment variables:
 
 | Variable | Description | Default |
 |---|---|---|
@@ -70,16 +68,6 @@ The LLM service maps errors to appropriate HTTP status codes:
 | Generic LLM error | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service error", error: "Bad Gateway" }` |
 
 ### Health Check
-
-The `GET /health` endpoint returns a simple health check:
-
-```json
-{
-  "status": "ok"
-}
-```
-
-### LLM Health Check
 
 The `GET /health/llm` endpoint (in `LlmController`) returns:
 
@@ -106,24 +94,43 @@ Detailed setup instructions for each connector.
 
 ### Kubernetes Connector Setup
 
-The Kubernetes connector can operate in two modes:
+The Kubernetes connector uses the `@kubernetes/client-node` library and loads configuration from the `KUBECONFIG` environment variable.
 
-1.  **In-cluster (Recommended for Production)**: When Argus AI is deployed inside a Kubernetes cluster, it will automatically use the service account credentials assigned to its pod.
-    -   Ensure the service account has appropriate read-only permissions (e.g., `get`, `list`, `watch` for pods, deployments, events).
-    -   **Do not set `KUBECONFIG`** in your environment variables if deploying in-cluster.
+**Setup steps**:
 
-2.  **Out-of-cluster (Recommended for Local Development)**: For local development, you can point Argus AI to an existing kubeconfig file.
-    -   Set the `KUBECONFIG` environment variable to the path of your kubeconfig file.
-    -   The path supports `~` expansion and environment variable references (e.g., `${HOME}/.kube/config`).
+1. **Export your kubeconfig** to `./.kube/config`:
+   ```bash
+   mkdir -p .kube
+   cp ~/.kube/config .kube/config
+   ```
 
-3.  **Offline mode**: If `KUBECONFIG` is not set and the app is not running in-cluster, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), and all methods return empty/offline results. A warning is logged at startup.
+2. **Set `KUBECONFIG`** in `.env`:
+   ```
+   KUBECONFIG=/kube/config
+   ```
 
-**Available Methods** (all wrapped with graceful degradation):
+3. **Run with Docker Compose** (the `docker-compose.yml` mounts `./.kube:/kube:ro` automatically):
+   ```bash
+   docker compose up -d
+   ```
 
-- `isHealthy()` — Returns `false` immediately if `KUBECONFIG` not set; otherwise calls `listPods()` and returns `false` if any pod reports `connector offline` status
-- `listPods(namespace)` — List pods in a namespace
-- `getPodLogs(podName, namespace)` — Get logs for a specific pod
-- `describeDeployment(deploymentName, namespace)` — Describe a deployment
+4. **Verify** the connector is healthy:
+   ```bash
+   curl -X POST http://localhost:3000/chat \
+     -H "Content-Type: application/json" \
+     -d '{"message": "What pods are running?"}'
+   ```
+
+**Available Methods** (all read-only):
+
+- `isHealthy()` — Health check (lists namespaces)
+- `listPods(namespace?)` — List pods (all namespaces or scoped)
+- `listDeployments(namespace?)` — List deployments (all namespaces or scoped)
+- `listNamespaces()` — List all namespaces
+- `describeDeployment(name, namespace)` — Describe a deployment
+- `getPodLogs(podName, namespace, tailLines?)` — Fetch pod logs
+
+**Offline mode**: If `KUBECONFIG` is not set, the connector gracefully reports itself as offline and returns structured offline markers instead of crashing.
 
 ### Prometheus Connector Setup
 
@@ -131,22 +138,17 @@ The Kubernetes connector can operate in two modes:
 2.  Set the `PROMETHEUS_URL` environment variable or add it to your `config.yaml`.
 3.  If your Prometheus instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
-4.  **Offline mode**: If `PROMETHEUS_URL` is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), and query methods return empty result sets. A warning is logged at startup.
-
 ### Loki Connector Setup
 
 1.  Ensure your Loki instance is accessible from where Argus AI is running.
 2.  Set the `LOKI_URL` environment variable or add it to your `config.yaml`.
 3.  If your Loki instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
-4.  **Offline mode**: If `LOKI_URL` is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), `queryRange()` returns an offline result, and `summarizeErrors()` returns an offline message. A warning is logged at startup.
-
 ### ArgoCD Connector Setup
 
 1.  Ensure your ArgoCD instance is accessible from where Argus AI is running.
-2.  Set the `ARGOCD_URL` and `ARGOCD_TOKEN` environment variables or add them to your `config.yaml`.
-
-3.  **Offline mode**: If `ARGOCD_URL` is not set, the connector operates in offline mode. `isHealthy()` returns `false` immediately (no network call), `getAppStatus()` returns an offline status object, `listApps()` returns an empty array, and `getClusterSummary()` returns an offline message. A warning is logged at startup.
+2.  Set the `ARGOCD_URL` and `ARGOCD_AUTH_TOKEN` environment variables or add them to your `config.yaml`.
+3.  The token should have read-only access to applications.
 
 ### GitHub Actions Connector Setup
 
@@ -155,15 +157,32 @@ The Kubernetes connector can operate in two modes:
 
 ### Argus Monitor Connector Setup
 
-1.  Ensure you have a read-only replica of the Argus Monitor PostgreSQL database.
-2.  Set the `ARGUS_MONITOR_DB_URL` environment variable or add it to your `config.yaml`.
+1.  Ensure you have a running Argus Monitor PostgreSQL instance.
+2.  Set the `ARGUS_MONITOR_DB_URL` environment variable with the read-only connection string.
 
-## Redis Configuration
+## Docker Compose Configuration
 
-Redis is required for queue/job processing. The `docker-compose.yml` includes a Redis 7 service with healthcheck. When running outside Docker, set `REDIS_URL` to point to your Redis instance:
+### Production Stack (`docker-compose.yml`)
 
-```bash
-REDIS_URL=redis://localhost:6379
+The production stack includes Redis and the argus-ai app:
+
+```yaml
+services:
+  redis:
+    image: redis:7
+    # ...
+
+  argus-ai:
+    build: .
+    ports:
+      - "3000:3000"
+    env_file: .env
+    volumes:
+      - ./.kube:/kube:ro    # Optional: mount kubeconfig for live cluster queries
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # Reach host-published cluster APIs
 ```
 
-The app waits for Redis to be healthy before starting (when using Docker Compose). If Redis is unavailable, the app will fail to start.
+### Dev Stack (`docker-compose.dev.yml`)
+
+The dev stack includes Prometheus, Loki, Grafana, and the argus-ai app. See [development.md](development.md) for details.

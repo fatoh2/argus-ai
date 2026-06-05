@@ -33,9 +33,9 @@ deepseek:
 
 ### `gemini` (optional fallback)
 
-Configuration for the Google Gemini API (optional fallback LLM). If `GEMINI_API_KEY` is not set, the Gemini service marks itself unavailable at startup instead of crashing — the app boots and operates normally using DeepSeek as the primary LLM.
+Configuration for the Google Gemini API (optional fallback LLM).
 
--   `api_key`: Your Gemini API key. Populated via environment variable (e.g., `${GEMINI_API_KEY}`). **Optional** — leave empty to skip the Gemini fallback entirely.
+-   `api_key`: Your Gemini API key. Populated via environment variable (e.g., `${GEMINI_API_KEY}`).
 -   `model`: The Gemini model to use (e.g., `gemini-1.5-flash`).
 
 Example:
@@ -51,7 +51,9 @@ gemini:
 
 Configuration for the Kubernetes connector.
 
--   `kubeconfig_path`: Path to your kubeconfig file. Supports `~` expansion and environment variables (e.g., `${KUBECONFIG}`). If left empty, Argus AI will attempt to use in-cluster configuration (suitable when running inside a Kubernetes cluster). If neither `KUBECONFIG` nor in-cluster config is available, the connector runs in offline mode.
+-   `kubeconfig_path`: Path to your kubeconfig file. Supports `~` expansion and environment variables (e.g., `${KUBECONFIG_PATH}`). If left empty, Argus AI will attempt to use in-cluster configuration (suitable when running inside a Kubernetes cluster).
+
+> **Note**: When running via Docker Compose, the Kubernetes connector uses the `KUBECONFIG` environment variable instead (set in `.env`). The `config.yaml` `kubeconfig_path` is used when running outside Docker.
 
 Example:
 
@@ -66,8 +68,6 @@ Configuration for the Prometheus connector.
 
 -   `url`: URL of your Prometheus instance (e.g., `http://localhost:9090`, `https://prometheus.example.com`).
 
-The Prometheus connector now makes real HTTP requests to the Prometheus API (previously used stubs). If `PROMETHEUS_URL` is not set, the connector runs in offline mode.
-
 Example:
 
 ```yaml
@@ -81,8 +81,6 @@ Configuration for the Loki connector.
 
 -   `url`: URL of your Loki instance (e.g., `http://localhost:3100`, `https://loki.example.com`).
 
-If `LOKI_URL` is not set, the connector runs in offline mode — all methods return empty/structured results instead of crashing.
-
 Example:
 
 ```yaml
@@ -95,9 +93,7 @@ loki:
 Configuration for the ArgoCD connector.
 
 -   `url`: URL of your ArgoCD instance (e.g., `https://argocd.example.com`).
--   `token`: ArgoCD authentication token. **Required.** Populated via environment variable (e.g., `${ARGOCD_TOKEN}`).
-
-If `ARGOCD_URL` is not set, the connector runs in offline mode — all methods return empty/structured results instead of crashing.
+-   `token`: ArgoCD authentication token. **Required.** Populated via environment variable (e.g., `${ARGOCD_AUTH_TOKEN}`).
 
 Example:
 
@@ -168,19 +164,6 @@ The `GET /health/llm` endpoint returns:
 
 On failure, `ok` is `false` and `latencyMs` reflects the time until the health check timed out (10s).
 
-## Redis Configuration
-
-Redis is used for queue/job processing. It is configured via the `REDIS_URL` environment variable:
-
-| Variable | Description | Default |
-|---|---|---|
-| `REDIS_URL` | Redis connection string | `redis://localhost:6379` |
-
-In the production `docker-compose.yml`, Redis is automatically configured with:
-- Image: `redis:7`
-- Healthcheck: `redis-cli ping` (5s interval, 5 retries, 10s start period)
-- The `argus-ai` service depends on Redis being healthy before starting
-
 ## Error Handling and Resilience
 
 Argus AI is designed to handle various operational challenges gracefully:
@@ -190,6 +173,6 @@ Argus AI is designed to handle various operational challenges gracefully:
 - **LLM Error Resilience**:
   - **30-second hard timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`. Timeout errors are NOT retried.
   - **Automatic retry** — on 5xx server errors, the call is retried once (configurable via `LLM_MAX_RETRIES`) before returning `502 Bad Gateway`.
-  - **Token limit guard** — when estimated tokens exceed `LLM_MAX_TOKENS`, oldest conversation history is truncated first.
-- **Redis Connectivity**: If Redis is unavailable, the application will fail to start (the `docker-compose.yml` enforces the dependency). For local development without Docker, ensure Redis is running or set `REDIS_URL` to a valid instance.
-- **Safe Logging**: All error logs automatically redact API keys, bearer tokens, and secrets using a regex pattern before writing to the console.
+  - **Token limit guard** — when estimated tokens exceed `LLM_MAX_TOKENS` (default 50k), oldest history is truncated first.
+  - **Gemini fallback** — if DeepSeek fails (non-timeout), the optional Gemini fallback is tried automatically.
+- **Kubernetes Connector Offline Mode**: If `KUBECONFIG` is not set, the Kubernetes connector gracefully reports itself as offline and returns structured offline markers. The app continues to function for other connectors.

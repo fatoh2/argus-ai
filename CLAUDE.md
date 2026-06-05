@@ -8,39 +8,24 @@ and optionally argus-monitor's database.
 
 ## Stack
 - **AI**: DeepSeek V3 (primary, OpenAI-compatible API) + Gemini 1.5 Flash (optional fallback)
-- **Backend**: NestJS + TypeScript (NestExpressApplication for static asset serving)
+- **Tool Use**: Agentic loop — sends tool schemas, executes `tool_calls`, feeds results back (max 5 iterations)
+- **Tool Registry**: `ToolRegistryService` — defines function schemas and routes calls to connectors
+- **Backend**: NestJS + TypeScript
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
-- **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`; `--forceExit` for integration tests
-- **Queue/Jobs**: Redis 7 (via `docker-compose.yml` with healthcheck)
+- **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
 - **Local Dev**: Docker Compose (`docker-compose.dev.yml`) with Prometheus, Loki, Grafana
-- **Production Stack**: Docker Compose (`docker-compose.yml`) with Redis + argus-ai (healthchecks on both)
-- **Dev Shortcuts**: `Makefile` with `make up`, `make down`, `make clean`, `make check`, `make test`, `make test-local`, `make chat`, `make health`, `make logs`
-- **Chat Dashboard**: Single-page web UI at `GET /` served via `useStaticAssets` from `public/index.html` (vanilla JS, no build step)
+- **Dev Shortcuts**: `Makefile` with `make up`, `make down`, `make check`, `make test`, `make chat`, `make health`, `make logs`
 
 ## Standing Rules
 
 ### Never clone this repo inside itself
 The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If you are an agent operating inside this repo, do NOT run `git clone` targeting this same repository — it creates a nested copy that wastes disk space and confuses tooling. If you find an `argus-ai/` directory inside the repo, it is a stray artifact and should be deleted.
 
-### Always verify before pushing
-Before `git push`, run:
-```bash
-make check   # tsc --noEmit — must exit 0
-make test    # jest --forceExit — must exit 0
-```
-If `make test-local` exists, also run that as the final gate.
-
 ## Repo Structure
 ```
-.dockerignore              # Prevents node_modules, .env, dist from entering Docker images
-docker-compose.yml         # Production stack: Redis + argus-ai with healthchecks
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
-Dockerfile                 # Multi-stage build (npm ci, curl for healthcheck, cache clean, copies public/)
-.env.example               # Template — copy to .env, never commit .env
-public/
-  index.html               # Chat dashboard UI (vanilla JS, served at / via useStaticAssets)
 scripts/
   setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
 Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
@@ -57,35 +42,37 @@ docker/
 src/
   app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
   app.controller.ts       # Health check endpoint
-  app.controller.ts       # GET / — root endpoint (hello)
   app.service.ts          # Core application service
-  main.ts                 # Bootstrap — NestExpressApplication, global ValidationPipe, useStaticAssets('public')
+  main.ts                 # Bootstrap — global ValidationPipe with whitelist
   chat/                   # Chat API module (REST endpoint)
     chat.controller.ts    # POST /chat — input sanitization (strips control chars)
     chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
     chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
     dto/
       chat.dto.ts         # ChatDto — IsString, MaxLength(4000)
-    chat.integration.spec.ts  # Integration tests (boots stack, hits /health, validates chat)
   connectors/
     connectors.module.ts  # Registers and exports all connectors
     utils/
       connector-error.ts  # Graceful degradation utility (timeout + AbortController + structured errors + log sanitization)
       connector-error.spec.ts  # Tests for error handling utility
-    k8s-prometheus.connector.ts
-    kubernetes.connector.ts
+    kubernetes.connector.ts  # Real K8s API client via @kubernetes/client-node (listPods, listDeployments, listNamespaces, describeDeployment, getPodLogs)
+    prometheus/
+      prometheus.connector.ts  # PromQL query wrapper
     loki.connector.ts     # LogQL query wrapper
     argocd.connector.ts   # ArgoCD API client
   llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
-    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
-    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
+    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule + ConnectorsModule, registers ToolRegistryService
+    llm.service.ts        # LlmService — wires tools into every chat call, 30s timeout, retry, token guard
     llm.service.spec.ts   # Tests for LlmService
     llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
     llm.controller.spec.ts# Tests for LlmController
     deepseek/             # DeepSeek V3 API client (primary LLM)
-      deepseek.service.ts
-      deepseek.service.spec.ts  # Unit tests for DeepSeek API client
+      deepseek.service.ts # Agentic loop: sends tools, executes tool_calls, feeds results back (max 5 iterations)
+      deepseek.service.spec.ts
     gemini/               # Google Gemini API client (optional fallback)
+      gemini.service.ts   # Checks GEMINI_API_KEY at startup; marks unavailable if missing
+    tools/
+      tool-registry.service.ts  # Tool schemas + executor — routes tool calls to connectors
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -99,30 +86,68 @@ All connectors:
 - Are strictly read-only
 - **Wrap all public methods** with `withConnectorErrorHandling('<name>', ...)` from `./utils/connector-error`
 
-, `degraded` (some unhealthy), `unhealthy` (all unhealthy).
+### Graceful Degradation Pattern
 
-## Chat Dashboard
+Every connector method must use `withConnectorErrorHandling`:
 
-The chat dashboard is a single-page HTML/JS application served at `GET /`:
+```typescript
+import { withConnectorErrorHandling, ConnectorErrorResult } from './utils/connector-error';
 
-- **Location**: `public/index.html`
-- **How it's served**: `NestExpressApplication.useStaticAssets(join(__dirname, '..', 'public'))` in `src/main.ts`
-- **Runtime**: The `Dockerfile` copies `public/` into the runtime image alongside `dist/`
-- **Features**: Message bubbles, live `/health` status indicator (green/red dot), clickable example prompts, code-block rendering, typing indicator
-- **No build step**: Vanilla JavaScript, no framework, no separate frontend container
-- **API calls**: The dashboard calls `POST /chat` on the same origin
+@Injectable()
+export class MyConnector {
+  async getData(): Promise<MyData | ConnectorErrorResult<MyData>> {
+    return withConnectorErrorHandling('my-connector', async (signal) => {
+      // Actual connector logic
+      // Pass signal to HTTP requests for proper cancellation on timeout
+      return await this.api.fetchData({ signal });
+    });
+  }
 
-## Chat API
-
-### `POST /chat`
-- **Input validation**: `IsString()`, `MaxLength(4000)`, strips control characters and null bytes
-- **Rate limit**: 20 requests per minute per IP (logged with hashed IP)
-- **LLM routing**: Primary = DeepSeek V3, fallback = Gemini (if configured)
-- **Error mapping**: Timeout → 504, Rate limit → 429, Auth failure → 401, Server error → 502
-
-## Testing
-
-```bash
-make check    # tsc --noEmit + lint
-make test     # jest --forceExit
+  async isHealthy(): Promise<boolean> {
+    try {
+      const result = await this.getData();
+      return !(result && typeof result === 'object' && 'error' in result);
+    } catch {
+      return false;
+    }
+  }
+}
 ```
+
+The utility provides:
+- **10-second timeout with AbortController** (configurable via third parameter) — cancels the underlying HTTP request on timeout
+- **Structured error responses**: `{ error: "<name> unavailable", data: null }`
+- **Safe logging**: connector name, error type, duration — API keys/tokens auto-redacted via `sanitizeLog()`
+
+### AbortSignal Parameter
+
+The factory function receives an `AbortSignal` as its first argument:
+
+```typescript
+fn: (signal: AbortSignal) => Promise<T>
+```
+
+## Tool Registry Architecture
+
+The `ToolRegistryService` is the bridge between the LLM and connectors:
+
+1. **`getToolSchemas()`** — returns OpenAI/DeepSeek-compatible function schemas for all available tools
+2. **`executeTool(name, args)`** — routes a tool call to the appropriate connector method and returns a JSON string result
+
+To add a new tool:
+1. Add a method to the relevant connector
+2. Add a schema entry in `getToolSchemas()`
+3. Add a case in `executeTool()` switch statement
+4. Write tests
+
+## Agentic Tool-Use Loop
+
+The `DeepSeekService.chat()` method implements an agentic loop:
+
+1. Sends the user query + tool schemas to the DeepSeek API
+2. If the model responds with `tool_calls`, executes them via `ToolRegistryService`
+3. Feeds tool results back into the conversation
+4. Repeats until the model produces a final answer (max 5 iterations)
+5. Returns the final response
+
+The `LlmService` wires tools into every chat call by passing `toolOptions` (schemas + executor) to `DeepSeekService.chat()`.
