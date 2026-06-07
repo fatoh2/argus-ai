@@ -42,8 +42,19 @@ export class ArgoCDConnector {
     // to a nested config key, then a sensible default.
     this.baseUrl =
       process.env.ARGOCD_URL || this.configService.get<string>('argocd.url', 'https://localhost:8080');
+
+    // Backward compatibility: ARGOCD_AUTH_TOKEN is deprecated in favour of
+    // ARGOCD_TOKEN. If the old var is set, use it and emit a one-time warning.
+    const tokenFromEnv = process.env.ARGOCD_TOKEN || process.env.ARGOCD_AUTH_TOKEN;
+    if (process.env.ARGOCD_AUTH_TOKEN && !process.env.ARGOCD_TOKEN) {
+      this.logger.warn(
+        '[argocd] ARGOCD_AUTH_TOKEN is deprecated — rename to ARGOCD_TOKEN. ' +
+        'Support for ARGOCD_AUTH_TOKEN will be removed in a future release.',
+      );
+    }
     this.token =
-      process.env.ARGOCD_TOKEN || this.configService.get<string>('argocd.token', '');
+      tokenFromEnv || this.configService.get<string>('argocd.token', '');
+
     this.available = !!process.env.ARGOCD_URL;
     if (!this.available) this.logger.warn('[argocd] ARGOCD_URL not set — running in offline mode');
   }

@@ -35,13 +35,15 @@ Here's a list of environment variables used:
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | No | `30000` |
 | `LLM_MAX_TOKENS` | Maximum estimated tokens before oldest history is truncated | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retry attempts on 5xx LLM server errors | No | `1` |
-| `KUBECONFIG_PATH` | Path to your Kubernetes kubeconfig file | No | In-cluster config |
-| `PROMETHEUS_URL` | URL of your Prometheus instance | No | `http://localhost:9090` |
-| `LOKI_URL` | URL of your Loki instance | No | `http://localhost:3100` |
-| `ARGOCD_URL` | URL of your ArgoCD instance | No | `https://localhost:8080` |
-| `ARGOCD_AUTH_TOKEN` | Authentication token for ArgoCD | No | — |
+| `KUBECONFIG` | Path to a kubeconfig file. When unset, the Kubernetes tools report offline. | No | — |
+| `PROMETHEUS_URL` | URL of your Prometheus instance | No | — |
+| `LOKI_URL` | URL of your Loki instance | No | — |
+| `ARGOCD_URL` | URL of your ArgoCD instance | No | — |
+| `ARGOCD_TOKEN` | Authentication token for ArgoCD | No | — |
 | `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No | — |
 | `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
+
+> **Note**: `ARGOCD_AUTH_TOKEN` was renamed to `ARGOCD_TOKEN`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `ARGOCD_TOKEN`.
 
 ## LLM Configuration
 
@@ -96,10 +98,10 @@ The Kubernetes connector can operate in two modes:
 
 1.  **In-cluster (Recommended for Production)**: When Argus AI is deployed inside a Kubernetes cluster, it will automatically use the service account credentials assigned to its pod.
     -   Ensure the service account has appropriate read-only permissions (e.g., `get`, `list`, `watch` for pods, deployments, events).
-    -   **Do not set `KUBECONFIG_PATH`** in your `config.yaml` or environment variables if deploying in-cluster.
+    -   **Do not set `KUBECONFIG`** in your environment variables if deploying in-cluster.
 
 2.  **Out-of-cluster (Recommended for Local Development)**: For local development, you can point Argus AI to an existing kubeconfig file.
-    -   Set the `KUBECONFIG_PATH` environment variable or add it to your `config.yaml`.
+    -   Set the `KUBECONFIG` environment variable or add it to your `.env` file.
     -   The path supports `~` expansion and environment variable references (e.g., `${HOME}/.kube/config`).
 
 **Available Methods** (all wrapped with graceful degradation):
@@ -112,13 +114,13 @@ The Kubernetes connector can operate in two modes:
 ### Prometheus Connector Setup
 
 1.  Ensure your Prometheus instance is accessible from where Argus AI is running.
-2.  Set the `PROMETHEUS_URL` environment variable or add it to your `config.yaml`.
+2.  Set the `PROMETHEUS_URL` environment variable or add it to your `.env` file.
 3.  If your Prometheus instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
 ### Loki Connector Setup
 
 1.  Ensure your Loki instance is accessible from where Argus AI is running.
-2.  Set the `LOKI_URL` environment variable or add it to your `config.yaml`.
+2.  Set the `LOKI_URL` environment variable or add it to your `.env` file.
 3.  If your Loki instance requires authentication, configure it via environment variables or your deployment's secret management system.
 
 **Available Methods** (all wrapped with graceful degradation):
@@ -132,7 +134,9 @@ The Kubernetes connector can operate in two modes:
 
 1.  Ensure your ArgoCD instance is accessible from where Argus AI is running.
 2.  Generate an ArgoCD authentication token with appropriate read-only permissions.
-3.  Set the `ARGOCD_URL` and `ARGOCD_AUTH_TOKEN` environment variables or add them to your `config.yaml`.
+3.  Set the `ARGOCD_URL` and `ARGOCD_TOKEN` environment variables or add them to your `.env` file.
+
+> **Deprecation note**: `ARGOCD_AUTH_TOKEN` was renamed to `ARGOCD_TOKEN`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `ARGOCD_TOKEN`.
 
 **Available Methods** (all wrapped with graceful degradation):
 
@@ -144,32 +148,41 @@ The Kubernetes connector can operate in two modes:
 ### GitHub Actions Connector Setup
 
 1.  Generate a GitHub Personal Access Token (PAT) with the `workflow` scope.
-2.  Set the `GITHUB_TOKEN` environment variable or add it to your `config.yaml`.
+2.  Set the `GITHUB_TOKEN` environment variable or add it to your `.env` file.
 
 ### Argus Monitor Connector Setup
 
-1.  Ensure you have a running Argus Monitor instance with a PostgreSQL database.
-2.  Set the `ARGUS_MONITOR_DB_URL` environment variable or add it to your `config.yaml`.
-3.  The connector uses a read-only connection to query alerts and wallet activity.
+1.  Ensure your Argus Monitor PostgreSQL instance is accessible from where Argus AI is running.
+2.  Set the `ARGUS_MONITOR_DB_URL` environment variable or add it to your `.env` file.
+3.  The connector uses a read-only connection to query wallet balances, alerts, and transaction history.
 
-## Error Handling and Resilience
+**Available Methods** (all wrapped with graceful degradation):
 
-Argus AI is designed to handle various operational challenges gracefully:
+- `isHealthy()` — Health check
+- `getWalletBalance(address)` — Get the latest balance for a wallet address
+- `getAlerts(hours?)` — Get recent alerts from the last N hours
+- `getTransactions(address, limit?)` — Get recent transactions for a wallet address
 
-- **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
-- **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** (using AbortController to cancel the underlying HTTP request) via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
-- **LLM Error Resilience**:
-  - **30-second hard timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`. Timeout errors are NOT retried.
-  - **Automatic retry** — on 5xx server errors, the call is retried once (configurable via `LLM_MAX_RETRIES`) before returning `502 Bad Gateway`.
-  - **Token limit guard** — prompts exceeding 50k estimated tokens (configurable via `LLM_MAX_TOKENS`) truncate oldest history first.
-  - **Safe logging** — the LLM service never logs full prompt or response content; all log output is sanitized via `sanitizeForLog()`.
-- **Empty/Null/Large Responses**:
-  - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
-  - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
-- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
-- **Input Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
+## config.yaml
 
-## See Also
+For non-sensitive defaults, you can use a `config.yaml` file:
 
-- [Config File Reference](config.md) — detailed `config.yaml` structure
-- [Development Guide](development.md) — local setup and project structure
+```yaml
+llm:
+  timeoutMs: 30000
+  maxTokens: 50000
+  maxRetries: 1
+
+connectors:
+  kubernetes:
+    kubeconfigPath: ~/.kube/config
+  prometheus:
+    url: http://localhost:9090
+  loki:
+    url: http://localhost:3100
+  argocd:
+    url: https://localhost:8080
+    token: ""
+```
+
+> **Note**: Environment variables always take precedence over `config.yaml` values. Use `config.yaml` for sensible defaults and `.env` / environment variables for secrets and per-deployment overrides.
