@@ -9,6 +9,35 @@ services:
       retries: 5
       start_period: 10s
 
+  # Optional local observability stack so the Prometheus/Loki tools have
+  # something real to query. Safe to ignore if you only use Kubernetes.
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    command:
+      - "-config.file=/etc/loki/local-config.yaml"
+
+  promtail:
+    image: grafana/promtail:latest
+    volumes:
+      - ./docker/promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/log:/var/log:ro
+    command:
+      - "-config.file=/etc/promtail/config.yml"
+    depends_on:
+      - loki
+
   argus-ai:
     build:
       context: .
@@ -19,6 +48,15 @@ services:
     environment:
       NODE_ENV: ${NODE_ENV:-development}
       REDIS_URL: redis://redis:6379
+      # KUBECONFIG comes from .env. Set it to /kube/config to use the
+      # mounted kubeconfig below; leave empty for offline mode.
+    volumes:
+      # Optional: mount a kubeconfig to let the k8s connector query a cluster.
+      # Provide ./.kube/config locally (gitignored). Safe to leave absent.
+      - ./.kube:/kube:ro
+    extra_hosts:
+      # Lets the container reach a host-published cluster API (k3d on Docker Desktop).
+      - "host.docker.internal:host-gateway"
     depends_on:
       redis:
         condition: service_healthy

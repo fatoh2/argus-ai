@@ -1,6 +1,7 @@
 import { Injectable, HttpException, Logger } from '@nestjs/common';
 import { DeepSeekService } from './deepseek/deepseek.service';
 import { GeminiService } from './gemini/gemini.service';
+import { ToolRegistryService } from './tools/tool-registry.service';
 
 function estimateTokens(text: string): number { return Math.ceil(text.length / 4); }
 
@@ -29,6 +30,7 @@ export class LlmService {
 
   constructor(
     private readonly deepseek: DeepSeekService,
+    private readonly tools: ToolRegistryService,
     private readonly gemini?: GeminiService,
   ) {}
 
@@ -40,9 +42,15 @@ export class LlmService {
     const safeHistory = truncateHistory(history, this.maxTokens);
     this.logger.log(`LLM call: ~${estimateTokens(message)} tokens, ${safeHistory.length} history msgs`);
 
+    // Advertise infrastructure tools so the model can query live systems.
+    const toolOptions = {
+      tools: this.tools.getToolSchemas(),
+      executeTool: (name: string, args: Record<string, any>) => this.tools.executeTool(name, args),
+    };
+
     try {
       const result = await Promise.race([
-        this.deepseek.chat(message, safeHistory),
+        this.deepseek.chat(message, safeHistory, toolOptions),
         new Promise<never>((_, reject) =>
           setTimeout(() => reject(new Error('LLM request timed out')), this.timeoutMs),
         ),
@@ -51,8 +59,8 @@ export class LlmService {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
 
-      // Try Gemini fallback if available
-      if (this.gemini && !msg.includes('timed out')) {
+      // Try Gemini fallback if available (key configured)
+      if (this.gemini?.isAvailable() && !msg.includes('timed out')) {
         this.logger.warn(`DeepSeek failed, trying Gemini fallback: ${redact(msg)}`);
         try {
           const fallbackResult = await Promise.race([

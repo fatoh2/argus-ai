@@ -5,7 +5,7 @@ claude:
 
 # Kubernetes connector configuration
 kubernetes:
-  kubeconfig_path: "~/.kube/config" # Path to your kubeconfig file, or leave empty for in-cluster configuration. Supports ~ expansion and environment variables (e.g., "${KUBECONFIG_PATH}")
+  kubeconfig_path: "~/.kube/config" # Path to your kubeconfig file, or leave empty for in-cluster configuration. Supports ~ expansion and environment variables (e.g., "${KUBECONFIG}")
 
 # Prometheus connector configuration
 prometheus:
@@ -18,7 +18,7 @@ loki:
 # ArgoCD connector configuration
 argocd:
   url: "https://argocd.example.com" # URL of your ArgoCD instance
-  token: "${ARGOCD_AUTH_TOKEN}" # ArgoCD authentication token (populated via environment variable)
+  token: "${ARGOCD_TOKEN}" # ArgoCD authentication token (populated via environment variable)
 
 # GitHub Actions connector configuration
 github_actions:
