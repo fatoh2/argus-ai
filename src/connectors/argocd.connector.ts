@@ -38,9 +38,12 @@ export class ArgoCDConnector {
   private readonly available: boolean;
 
   constructor(private configService: ConfigService) {
-    this.baseUrl = this.configService.get<string>('argocd.url', 'https://localhost:8080');
-    this.token = this.configService.get<string>('argocd.token', '');
-    // Check if ARGOCD_URL env var is explicitly set; if not, connector is offline
+    // Prefer the flat env var (what ConfigModule actually loads); fall back
+    // to a nested config key, then a sensible default.
+    this.baseUrl =
+      process.env.ARGOCD_URL || this.configService.get<string>('argocd.url', 'https://localhost:8080');
+    this.token =
+      process.env.ARGOCD_TOKEN || this.configService.get<string>('argocd.token', '');
     this.available = !!process.env.ARGOCD_URL;
     if (!this.available) this.logger.warn('[argocd] ARGOCD_URL not set — running in offline mode');
   }

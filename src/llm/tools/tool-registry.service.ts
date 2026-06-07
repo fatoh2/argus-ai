@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { KubernetesConnector } from '../../connectors/kubernetes.connector';
 import { PrometheusConnector } from '../../connectors/prometheus/prometheus.connector';
 import { LokiConnector } from '../../connectors/loki.connector';
+import { ArgoCDConnector } from '../../connectors/argocd.connector';
 
 /** OpenAI/DeepSeek-compatible function-calling tool definition. */
 export interface ToolSchema {
@@ -26,6 +27,7 @@ export class ToolRegistryService {
     private readonly k8s: KubernetesConnector,
     private readonly prometheus: PrometheusConnector,
     private readonly loki: LokiConnector,
+    private readonly argocd: ArgoCDConnector,
   ) {}
 
   /** Tool schemas advertised to the LLM. */
@@ -90,6 +92,38 @@ export class ToolRegistryService {
             },
             required: ['podName'],
           },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'list_argocd_apps',
+          description:
+            'List all ArgoCD applications with their sync status (Synced/OutOfSync) and health (Healthy/Degraded). ' +
+            'Use for GitOps deployment questions.',
+          parameters: { type: 'object', properties: {} },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'get_argocd_app',
+          description: 'Get sync status, health, and revision for a single ArgoCD application by name.',
+          parameters: {
+            type: 'object',
+            properties: { appName: { type: 'string', description: 'The ArgoCD application name.' } },
+            required: ['appName'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'argocd_summary',
+          description:
+            'Get an overall ArgoCD summary: how many apps are synced vs out-of-sync and healthy vs unhealthy, ' +
+            'with the problem apps listed. Use to answer "are my deployments in sync?".',
+          parameters: { type: 'object', properties: {} },
         },
       },
       {
@@ -178,6 +212,12 @@ export class ToolRegistryService {
           return JSON.stringify({
             summary: await this.loki.summarizeErrors(args.hours ?? 1, args.labelSelector ?? '{}'),
           });
+        case 'list_argocd_apps':
+          return JSON.stringify(await this.argocd.listApps());
+        case 'get_argocd_app':
+          return JSON.stringify(await this.argocd.getAppStatus(args.appName));
+        case 'argocd_summary':
+          return JSON.stringify({ summary: await this.argocd.getClusterSummary() });
         default:
           return JSON.stringify({ error: `Unknown tool: ${name}` });
       }
