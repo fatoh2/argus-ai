@@ -76,4 +76,20 @@ describe('KubernetesConnector', () => {
       });
     });
   });
+
+  describe('isHealthy', () => {
+    it('should return true when listPods succeeds', async () => {
+      jest.spyOn(connector, 'listPods').mockResolvedValue([]);
+      const result = await connector.isHealthy();
+      expect(result).toBe(true);
+    });
+
+    it('should return false when listPods returns structured offline status', async () => {
+      jest.spyOn(connector, 'listPods').mockResolvedValue([
+        { status: 'connector offline', reason: 'kubernetes unavailable' },
+      ]);
+      const result = await connector.isHealthy();
+      expect(result).toBe(false);
+    });
+  });
 });

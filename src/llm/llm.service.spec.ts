@@ -1,117 +1,145 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { HttpException } from '@nestjs/common';
+import { HttpException, HttpStatus } from '@nestjs/common';
 import { LlmService } from './llm.service';
 import { DeepSeekService } from './deepseek/deepseek.service';
 import { GeminiService } from './gemini/gemini.service';
 
 describe('LlmService', () => {
   let service: LlmService;
-  let deepseekService: jest.Mocked<DeepSeekService>;
-  let geminiService: jest.Mocked<GeminiService>;
+  let deepseekService: jest.Mocked<Pick<DeepSeekService, 'chat'>>;
+  let geminiService: jest.Mocked<Pick<GeminiService, 'runToolUseLoop'>>;
 
   beforeEach(async () => {
-    // Set env vars for testing
+    jest.useRealTimers();
     process.env.LLM_TIMEOUT_MS = '100';
-    process.env.LLM_MAX_TOKENS = '50000';
+
+    deepseekService = { chat: jest.fn() };
+    geminiService = { runToolUseLoop: jest.fn() };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         LlmService,
-        {
-          provide: DeepSeekService,
-          useValue: {
-            chat: jest.fn(),
-          },
-        },
-        {
-          provide: GeminiService,
-          useValue: {
-            runToolUseLoop: jest.fn(),
-          },
-        },
+        { provide: DeepSeekService, useValue: deepseekService },
+        { provide: GeminiService, useValue: geminiService },
       ],
     }).compile();
 
     service = module.get<LlmService>(LlmService);
-    deepseekService = module.get(DeepSeekService);
-    geminiService = module.get(GeminiService);
   });
 
   afterEach(() => {
+    delete process.env.LLM_TIMEOUT_MS;
     jest.restoreAllMocks();
   });
 
   describe('runToolUseLoop', () => {
-    it('should return the DeepSeek response on success', async () => {
-      deepseekService.chat.mockResolvedValue('Hello from LLM');
+    it('returns the DeepSeek response on success', async () => {
+      deepseekService.chat.mockResolvedValue('Hello from DeepSeek');
 
       const result = await service.runToolUseLoop('test prompt', []);
-      expect(result).toBe('Hello from LLM');
+
+      expect(result).toBe('Hello from DeepSeek');
+      expect(deepseekService.chat).toHaveBeenCalledWith('test prompt', []);
+      expect(geminiService.runToolUseLoop).not.toHaveBeenCalled();
     });
 
-    it('should throw 504 Gateway Timeout when DeepSeek call exceeds timeout', async () => {
-      // Simulate a slow LLM call that exceeds the 100ms timeout
+    it('throws 504 Gateway Timeout when DeepSeek call exceeds timeout', async () => {
       deepseekService.chat.mockImplementation(
         () => new Promise((resolve) => setTimeout(() => resolve('too late'), 200)),
       );
 
-      await expect(
-        service.runToolUseLoop('test prompt', []),
-      ).rejects.toThrow(HttpException);
+      await expect(service.runToolUseLoop('test prompt', [])).rejects.toThrow(
+        new HttpException(
+          {
+            statusCode: HttpStatus.GATEWAY_TIMEOUT,
+            message: 'LLM request timed out',
+            error: 'Gateway Timeout',
+          },
+          HttpStatus.GATEWAY_TIMEOUT,
+        ),
+      );
+      expect(geminiService.runToolUseLoop).not.toHaveBeenCalled();
     });
 
-    it('should fall back to Gemini when DeepSeek fails', async () => {
-      deepseekService.chat.mockRejectedValue(new Error('API error'));
-      geminiService.runToolUseLoop.mockResolvedValue('Gemini fallback response');
+    it('falls back to Gemini when DeepSeek fails', async () => {
+      deepseekService.chat.mockRejectedValue(new Error('DeepSeek 500: Internal Server Error'));
+      geminiService.runToolUseLoop.mockResolvedValue('Hello from Gemini');
 
       const result = await service.runToolUseLoop('test prompt', []);
-      expect(result).toBe('Gemini fallback response');
-      expect(geminiService.runToolUseLoop).toHaveBeenCalledTimes(1);
+
+      expect(result).toBe('Hello from Gemini');
+      expect(geminiService.runToolUseLoop).toHaveBeenCalledWith('test prompt', []);
     });
 
-    it('should throw 502 when both DeepSeek and Gemini fail', async () => {
-      deepseekService.chat.mockRejectedValue(new Error('API error'));
-      geminiService.runToolUseLoop.mockRejectedValue(new Error('Gemini also failed'));
+    it('throws 502 when DeepSeek and Gemini both fail', async () => {
+      deepseekService.chat.mockRejectedValue(new Error('DeepSeek 500: Internal Server Error'));
+      geminiService.runToolUseLoop.mockRejectedValue(new Error('Gemini 500: Internal Server Error'));
 
-      await expect(
-        service.runToolUseLoop('test prompt', []),
-      ).rejects.toThrow(
+      await expect(service.runToolUseLoop('test prompt', [])).rejects.toThrow(
         new HttpException(
-          { statusCode: 502, message: 'LLM service unavailable', error: 'Bad Gateway' },
-          502,
+          {
+            statusCode: HttpStatus.BAD_GATEWAY,
+            message: 'LLM service unavailable',
+            error: 'Bad Gateway',
+          },
+          HttpStatus.BAD_GATEWAY,
         ),
       );
     });
 
-    it('should truncate conversation history when over token limit', async () => {
+    it('truncates conversation history before sending to DeepSeek', async () => {
       deepseekService.chat.mockResolvedValue('OK');
-
-      // Create a history with many messages that exceed the token limit
-      const longHistory = Array.from({ length: 100 }, (_, i) => ({
+      process.env.LLM_MAX_TOKENS = '10';
+      const freshModule = await Test.createTestingModule({
+        providers: [
+          LlmService,
+          { provide: DeepSeekService, useValue: deepseekService },
+          { provide: GeminiService, useValue: geminiService },
+        ],
+      }).compile();
+      const freshService = freshModule.get<LlmService>(LlmService);
+      const longHistory = Array.from({ length: 10 }, (_, i) => ({
         role: 'user' as const,
-        content: 'A'.repeat(2000), // ~500 tokens each
+        content: `message-${i}-${'A'.repeat(2000)}`,
       }));
 
-      await service.runToolUseLoop('final prompt', [], longHistory);
+      await freshService.runToolUseLoop('final prompt', [], longHistory);
 
-      // The call should still succeed (truncation happens internally)
-      expect(deepseekService.chat).toHaveBeenCalledTimes(1);
+      const sentHistory = deepseekService.chat.mock.calls[0][1]!;
+      expect(sentHistory.length).toBeLessThan(longHistory.length);
+      delete process.env.LLM_MAX_TOKENS;
+    });
+
+    it('does not log full prompt or response content', async () => {
+      const loggerSpy = jest.spyOn(service['logger'], 'log');
+      deepseekService.chat.mockResolvedValue('sensitive response data');
+
+      await service.runToolUseLoop('sensitive prompt with API_KEY_12345', []);
+
+      for (const logCall of loggerSpy.mock.calls) {
+        const logMessage = logCall[0];
+        expect(logMessage).not.toContain('sensitive prompt');
+        expect(logMessage).not.toContain('sensitive response');
+        expect(logMessage).not.toContain('API_KEY_12345');
+      }
     });
   });
 
   describe('checkHealth', () => {
-    it('should return ok=true when DeepSeek responds quickly', async () => {
+    it('returns ok=true when DeepSeek responds quickly', async () => {
       deepseekService.chat.mockResolvedValue('ok');
 
       const result = await service.checkHealth();
+
       expect(result.ok).toBe(true);
       expect(result.latencyMs).toBeGreaterThanOrEqual(0);
     });
 
-    it('should return ok=false when DeepSeek fails', async () => {
+    it('returns ok=false when DeepSeek fails', async () => {
       deepseekService.chat.mockRejectedValue(new Error('API error'));
 
       const result = await service.checkHealth();
+
       expect(result.ok).toBe(false);
       expect(result.latencyMs).toBeGreaterThanOrEqual(0);
     });
