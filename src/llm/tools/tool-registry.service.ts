@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { KubernetesConnector } from '../../connectors/kubernetes.connector';
+import { PrometheusConnector } from '../../connectors/prometheus/prometheus.connector';
+import { LokiConnector } from '../../connectors/loki.connector';
 
 /** OpenAI/DeepSeek-compatible function-calling tool definition. */
 export interface ToolSchema {
@@ -20,7 +22,11 @@ export interface ToolSchema {
 export class ToolRegistryService {
   private readonly logger = new Logger(ToolRegistryService.name);
 
-  constructor(private readonly k8s: KubernetesConnector) {}
+  constructor(
+    private readonly k8s: KubernetesConnector,
+    private readonly prometheus: PrometheusConnector,
+    private readonly loki: LokiConnector,
+  ) {}
 
   /** Tool schemas advertised to the LLM. */
   getToolSchemas(): ToolSchema[] {
@@ -86,6 +92,64 @@ export class ToolRegistryService {
           },
         },
       },
+      {
+        type: 'function',
+        function: {
+          name: 'query_metrics',
+          description:
+            'Run an instant PromQL query against Prometheus and return the current value(s). ' +
+            'Use for questions about CPU, memory, request rates, or any metric. ' +
+            'Examples: "up", "rate(http_requests_total[5m])", "sum(container_memory_usage_bytes)".',
+          parameters: {
+            type: 'object',
+            properties: {
+              query: { type: 'string', description: 'A valid PromQL expression.' },
+            },
+            required: ['query'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'query_logs',
+          description:
+            'Query logs from Loki using a LogQL label selector over a time range. ' +
+            'Use to inspect recent logs for a service or component.',
+          parameters: {
+            type: 'object',
+            properties: {
+              labelSelector: {
+                type: 'string',
+                description: 'LogQL label selector without braces, e.g. job="varlogs" or app="web".',
+              },
+              level: { type: 'string', description: 'Optional substring/level filter, e.g. "error".' },
+              start: { type: 'string', description: 'Start time: ISO 8601 or relative like "1h", "30m".' },
+              limit: { type: 'number', description: 'Max lines (default 100, capped at 500).' },
+            },
+            required: ['labelSelector'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'summarize_errors',
+          description:
+            'Summarize error-level logs from Loki over the last N hours, grouped by source and message. ' +
+            'Use to answer "what errors happened recently?" or for incident triage.',
+          parameters: {
+            type: 'object',
+            properties: {
+              hours: { type: 'number', description: 'Look-back window in hours (default 1).' },
+              labelSelector: {
+                type: 'string',
+                description: 'Optional LogQL label selector without braces to scope the search.',
+              },
+            },
+          },
+        },
+      },
     ];
   }
 
@@ -103,6 +167,16 @@ export class ToolRegistryService {
         case 'get_pod_logs':
           return JSON.stringify({
             logs: await this.k8s.getPodLogs(args.podName, args.namespace, args.tailLines),
+          });
+        case 'query_metrics':
+          return JSON.stringify(await this.prometheus.instantQuery(args.query));
+        case 'query_logs':
+          return JSON.stringify(
+            await this.loki.queryLogs(args.labelSelector, args.start, undefined, args.level, args.limit ?? 100),
+          );
+        case 'summarize_errors':
+          return JSON.stringify({
+            summary: await this.loki.summarizeErrors(args.hours ?? 1, args.labelSelector ?? '{}'),
           });
         default:
           return JSON.stringify({ error: `Unknown tool: ${name}` });
