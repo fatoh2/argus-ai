@@ -77,6 +77,7 @@ describe('KubernetesConnector', () => {
     });
   });
 
+
   describe('isHealthy', () => {
     it('should return true when listPods succeeds', async () => {
       jest.spyOn(connector, 'listPods').mockResolvedValue([]);

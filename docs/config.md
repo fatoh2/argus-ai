@@ -51,11 +51,7 @@ gemini:
 
 Configuration for the Kubernetes connector.
 
--   `kubeconfig_path`: Path to your kubeconfig file. Supports `~` expansion and environment variables (e.g., `${KUBECONFIG}`). If left empty, Argus AI will attempt to use in-cluster configuration (suitable when running inside a Kubernetes cluster).
-
-> **Note**: When running via Docker Compose, the Kubernetes connector uses the `KUBECONFIG` environment variable instead (set in `.env`). The `config.yaml` `kubeconfig_path` is used when running outside Docker.
->
-> **Deprecation note**: `KUBECONFIG_PATH` was renamed to `KUBECONFIG`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `KUBECONFIG`.
+-   `kubeconfig_path`: Path to your kubeconfig file. Supports `~` expansion and environment variables (e.g., `${KUBECONFIG_PATH}`). If left empty, Argus AI will attempt to use in-cluster configuration (suitable when running inside a Kubernetes cluster).
 
 Example:
 
@@ -95,16 +91,14 @@ loki:
 Configuration for the ArgoCD connector.
 
 -   `url`: URL of your ArgoCD instance (e.g., `https://argocd.example.com`).
--   `token`: ArgoCD authentication token. **Required.** Populated via environment variable (e.g., `${ARGOCD_TOKEN}`).
-
-> **Deprecation note**: `ARGOCD_AUTH_TOKEN` was renamed to `ARGOCD_TOKEN`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `ARGOCD_TOKEN`.
+-   `token`: ArgoCD authentication token. **Required.** Populated via environment variable (e.g., `${ARGOCD_AUTH_TOKEN}`).
 
 Example:
 
 ```yaml
 argocd:
   url: "https://argocd.example.com"
-  token: "${ARGOCD_TOKEN}"
+  token: "${ARGOCD_AUTH_TOKEN}"
 ```
 
 ### `github_actions`
@@ -175,8 +169,16 @@ Argus AI is designed to handle various operational challenges gracefully:
 - **Invalid Configuration**: The application will perform structural and format validation on connector configurations (e.g., URLs, paths, tokens). Syntactically incorrect YAML in `config.yaml` will result in an application startup error, prompting the user to correct the file.
 - **Network Connectivity**: Temporary network failures to external connectors (Kubernetes API, Prometheus, Loki, etc.) are handled gracefully. All connector calls are wrapped with a **10-second timeout** (using AbortController to cancel the underlying HTTP request) via the shared `withConnectorErrorHandling()` utility. If a connector is unreachable, it returns a structured `ConnectorErrorResult` rather than crashing the application.
 - **LLM Error Resilience**:
-  - **30-second hard timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`.
-  - **Automatic retry** — On 5xx server errors, the LLM call is retried up to `LLM_MAX_RETRIES` times (default: 1).
-  - **Token limit guard** — If the estimated token count exceeds `LLM_MAX_TOKENS` (default: 50,000), the oldest conversation history is truncated first.
-- **Graceful Connector Degradation**: If a connector's environment variable is not set (e.g., `KUBECONFIG`, `PROMETHEUS_URL`, `ARGOCD_URL`), the connector reports itself as offline to the LLM rather than crashing the request. The model informs the user that the service is unavailable.
-- **Log Sanitization**: Error logs automatically redact API keys, bearer tokens, and secrets using the `sanitizeForLogs()` utility — no sensitive credentials leak into log aggregation systems.
+  - **30-second hard timeout** — LLM calls are aborted after 30 seconds, returning `504 Gateway Timeout`. Timeout errors are NOT retried.
+  - **Automatic retry** — on 5xx server errors, the call is retried once (configurable via `LLM_MAX_RETRIES`) before returning `502 Bad Gateway`.
+  - **Token limit guard** — prompts exceeding 50k estimated tokens (configurable via `LLM_MAX_TOKENS`) truncate oldest history first.
+  - **Safe logging** — the LLM service never logs full prompt or response content; all log output is sanitized via `sanitizeForLog()`.
+- **Empty/Null/Large Responses**:
+  - **Empty/Null Data**: If connectors return empty or null data for a query, Argus AI will process this gracefully, often resulting in a "no data found" response from the LLM.
+  - **Large Data Volumes**: Strategies like pagination, sampling, and summarization are employed to manage extremely large responses from connectors (e.g., millions of log lines from Loki) to prevent memory exhaustion and ensure efficient LLM processing.
+- **Rate Limiting**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. Rate-limit hits are logged with a hashed IP for monitoring.
+- **Input Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
+
+## See Also
+
+For the full configuration reference including environment variables, see [Configuration Reference](configuration.md).

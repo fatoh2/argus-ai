@@ -5,8 +5,6 @@ import { AppService } from './app.service';
 import { ChatModule } from './chat/chat.module';
 import { ConnectorsModule } from './connectors/connectors.module';
 import { LlmModule } from './llm/llm.module';
-import { HealthController } from './health.controller';
-import { HealthService } from './health.service';
 
 @Module({
   imports: [
@@ -18,7 +16,7 @@ import { HealthService } from './health.service';
     LlmModule,
     ConnectorsModule,
   ],
-  controllers: [AppController, HealthController],
-  providers: [AppService, HealthService],
+  controllers: [AppController],
+  providers: [AppService],
 })
 export class AppModule {}
