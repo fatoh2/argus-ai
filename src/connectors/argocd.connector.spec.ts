@@ -7,7 +7,8 @@ describe('ArgoCDConnector', () => {
   let configService: ConfigService;
 
   beforeEach(async () => {
-    // Ensure ARGOCD_URL is not set so connector runs in offline mode
+    // Ensure ARGOCD_URL is not set so connector runs in offline mode.
+    // ConfigService mock also returns empty for argocd.url to keep it offline.
     delete process.env.ARGOCD_URL;
 
     const module: TestingModule = await Test.createTestingModule({
@@ -17,8 +18,8 @@ describe('ArgoCDConnector', () => {
           provide: ConfigService,
           useValue: {
             get: jest.fn((key: string, defaultValue: string) => {
-              if (key === 'argocd.url') return 'https://argocd.example.com';
-              if (key === 'argocd.token') return 'test-token';
+              if (key === 'argocd.url') return '';
+              if (key === 'argocd.token') return '';
               return defaultValue;
             }),
           },
@@ -135,6 +136,8 @@ describe('ArgoCDConnector', () => {
       expect(result.syncStatus).toBe('Synced');
       expect(result.healthStatus).toBe('Healthy');
       expect(result.summary).toContain('my-app');
+      expect(result.summary).toContain('Sync Status: Synced');
+      expect(result.summary).toContain('Revision: abc123');
       delete process.env.ARGOCD_URL;
     });
   });
@@ -168,12 +171,12 @@ describe('ArgoCDConnector', () => {
         body: JSON.stringify({ error: 'server error' }),
       });
 
-      const result = await configuredConnector.listApps();
-      expect(result).toEqual([]);
+      const apps = await configuredConnector.listApps();
+      expect(apps).toEqual([]);
       delete process.env.ARGOCD_URL;
     });
 
-    it('should return formatted app statuses', async () => {
+    it('should return list of apps when configured', async () => {
       process.env.ARGOCD_URL = 'https://argocd.example.com';
       const module: TestingModule = await Test.createTestingModule({
         providers: [
@@ -252,7 +255,7 @@ describe('ArgoCDConnector', () => {
       delete process.env.ARGOCD_URL;
     });
 
-    it('should include unhealthy apps in summary', async () => {
+    it('should return summary with healthy/unhealthy counts', async () => {
       process.env.ARGOCD_URL = 'https://argocd.example.com';
       const module: TestingModule = await Test.createTestingModule({
         providers: [
@@ -271,14 +274,27 @@ describe('ArgoCDConnector', () => {
       }).compile();
       const configuredConnector = module.get<ArgoCDConnector>(ArgoCDConnector);
       jest.spyOn(configuredConnector, 'listApps').mockResolvedValue([
-        { name: 'app-1', namespace: 'default', syncStatus: 'Synced', healthStatus: 'Healthy', summary: '' },
-        { name: 'app-2', namespace: 'default', syncStatus: 'OutOfSync', healthStatus: 'Degraded', summary: '' },
+        {
+          name: 'app-1',
+          namespace: 'default',
+          syncStatus: 'Synced',
+          healthStatus: 'Healthy',
+          summary: 'Sync: Synced\nHealth: Healthy',
+        },
+        {
+          name: 'app-2',
+          namespace: 'default',
+          syncStatus: 'OutOfSync',
+          healthStatus: 'Degraded',
+          summary: 'Sync: OutOfSync\nHealth: Degraded',
+        },
       ]);
 
       const result = await configuredConnector.getClusterSummary();
       expect(result).toContain('Total applications: 2');
+      expect(result).toContain('Synced: 1/2');
+      expect(result).toContain('Healthy: 1/2');
       expect(result).toContain('app-2');
-      expect(result).toContain('OutOfSync');
       delete process.env.ARGOCD_URL;
     });
   });
