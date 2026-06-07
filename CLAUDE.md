@@ -56,7 +56,7 @@ src/
     k8s-prometheus.connector.ts
     kubernetes.connector.ts
     loki.connector.ts     # LogQL query wrapper
-    argocd.connector.ts   # ArgoCD API client
+    argocd.connector.ts   # ArgoCD API client (reads ARGOCD_URL / ARGOCD_TOKEN from env)
   llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
     llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
     llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
@@ -64,7 +64,13 @@ src/
     llm.controller.ts     # GET /health/llm — LLM health check endpoint (returns 200 if LLM is responsive)
     llm.controller.spec.ts# Tests for LlmController
     deepseek/             # DeepSeek V3 API client (primary LLM)
+      deepseek.service.ts # Agentic loop: sends tools, executes tool_calls, feeds results back (max 5 iterations)
     gemini/               # Google Gemini API client (optional fallback)
+    tools/
+      tool-registry.service.ts  # Central registry of LLM-callable tool schemas + executor
+      tool-registry.service.spec.ts  # Tests for ToolRegistryService
+  public/                 # Static assets served by the app
+    index.html            # Chat dashboard UI (vanilla JS, no build step)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
 ```
 
@@ -72,7 +78,7 @@ config.example.yaml       # Template — copy to config.yaml, never commit confi
 
 All connectors:
 - Are `@Injectable()` classes in `src/connectors/`
-- Use `ConfigService` for configuration (injected via constructor)
+- Use `ConfigService` for configuration (injected via constructor), except ArgoCD which reads `ARGOCD_URL` / `ARGOCD_TOKEN` directly from env
 - Implement `isHealthy(): Promise<boolean>` for health checks
 - Are registered in `ConnectorsModule` (providers + exports)
 - Are strictly read-only
@@ -117,3 +123,34 @@ The factory function receives an `AbortSignal` as its first argument:
 
 ```typescript
 fn: (signal: AbortSignal) => Promise<T>
+```
+
+## Tool Registry Architecture
+
+The `ToolRegistryService` (at `src/llm/tools/tool-registry.service.ts`) is the central registry
+of LLM-callable tools. It provides:
+
+1. **Tool schemas** — OpenAI/DeepSeek-compatible function-calling schemas via `getToolSchemas()`
+2. **Tool execution** — routes tool calls to connectors via `executeTool(name, args)`
+
+Currently registered tools:
+
+| Tool Name | Description | Connector Method |
+|---|---|---|
+| `list_pods` | List Kubernetes pods with status, ready count, and restarts | `KubernetesConnector.listPods()` |
+| `list_deployments` | List deployments with ready/available replicas and image | `KubernetesConnector.listDeployments()` |
+| `list_namespaces` | List all namespaces in the cluster | `KubernetesConnector.listNamespaces()` |
+| `get_pod_logs` | Fetch recent log lines from a specific pod | `KubernetesConnector.getPodLogs()` |
+| `query_metrics` | Run an instant PromQL query against Prometheus and return current values | `PrometheusConnector.instantQuery()` |
+| `query_logs` | Query logs from Loki using a LogQL label selector over a time range | `LokiConnector.queryLogs()` |
+| `summarize_errors` | Summarize error-level logs from Loki over the last N hours, grouped by source and message | `LokiConnector.summarizeErrors()` |
+| `list_argocd_apps` | List all ArgoCD applications with sync status, health status, and target revision | `ArgoCDConnector.listApps()` |
+| `get_argocd_app` | Get sync/health status and revision for a specific ArgoCD application | `ArgoCDConnector.getAppStatus()` |
+| `argocd_summary` | Get a cluster-wide summary of ArgoCD applications (synced vs out-of-sync, healthy vs unhealthy) | `ArgoCDConnector.getClusterSummary()` |
+
+To add a new tool:
+
+1. Add a schema to `getToolSchemas()` in `tool-registry.service.ts`
+2. Add a case in `executeTool()` routing to the connector method
+3. Register the connector in `ConnectorsModule`
+4. Write unit tests for the new tool
