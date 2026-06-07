@@ -12,7 +12,17 @@ export class KubernetesConnector {
   private apps?: k8s.AppsV1Api;
 
   constructor() {
-    const kubeconfig = process.env.KUBECONFIG;
+    // Backward compatibility: KUBECONFIG_PATH is deprecated in favour of
+    // KUBECONFIG. If the old var is set and the new one isn't, use it and
+    // emit a one-time warning.
+    let kubeconfig = process.env.KUBECONFIG;
+    if (!kubeconfig && process.env.KUBECONFIG_PATH) {
+      this.logger.warn(
+        '[k8s] KUBECONFIG_PATH is deprecated — rename to KUBECONFIG. ' +
+        'Support for KUBECONFIG_PATH will be removed in a future release.',
+      );
+      kubeconfig = process.env.KUBECONFIG_PATH;
+    }
     if (!kubeconfig) {
       this.logger.warn('[k8s] no KUBECONFIG — running in offline mode');
       return;

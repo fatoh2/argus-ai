@@ -143,6 +143,11 @@ Key environment variables:
 | `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No | — |
 | `ARGUS_MONITOR_DB_URL` | Argus Monitor DB connection string | No | — |
 
+> **Migration notes**:
+> - `KUBECONFIG_PATH` was renamed to `KUBECONFIG`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `KUBECONFIG`.
+> - `ARGOCD_AUTH_TOKEN` was renamed to `ARGOCD_TOKEN`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `ARGOCD_TOKEN`.
+
+
 ## Architecture
 
 ```

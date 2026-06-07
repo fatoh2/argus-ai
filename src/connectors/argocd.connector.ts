@@ -39,9 +39,10 @@ export class ArgoCDConnector {
 
   constructor(private configService: ConfigService) {
     // Prefer the flat env var (what ConfigModule actually loads); fall back
-    // to a nested config key, then a sensible default.
+    // to a nested config key. No hardcoded default — when unset the connector
+    // reports offline (graceful degradation).
     this.baseUrl =
-      process.env.ARGOCD_URL || this.configService.get<string>('argocd.url', 'https://localhost:8080');
+      process.env.ARGOCD_URL || this.configService.get<string>('argocd.url', '');
 
     // Backward compatibility: ARGOCD_AUTH_TOKEN is deprecated in favour of
     // ARGOCD_TOKEN. If the old var is set, use it and emit a one-time warning.
@@ -55,7 +56,7 @@ export class ArgoCDConnector {
     this.token =
       tokenFromEnv || this.configService.get<string>('argocd.token', '');
 
-    this.available = !!process.env.ARGOCD_URL;
+    this.available = !!this.baseUrl;
     if (!this.available) this.logger.warn('[argocd] ARGOCD_URL not set — running in offline mode');
   }
 

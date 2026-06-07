@@ -44,6 +44,8 @@ Here's a list of environment variables used:
 | `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
 
 > **Note**: `ARGOCD_AUTH_TOKEN` was renamed to `ARGOCD_TOKEN`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `ARGOCD_TOKEN`.
+> **Note**: `KUBECONFIG_PATH` was renamed to `KUBECONFIG`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `KUBECONFIG`.
+
 
 ## LLM Configuration
 
@@ -103,6 +105,8 @@ The Kubernetes connector can operate in two modes:
 2.  **Out-of-cluster (Recommended for Local Development)**: For local development, you can point Argus AI to an existing kubeconfig file.
     -   Set the `KUBECONFIG` environment variable or add it to your `.env` file.
     -   The path supports `~` expansion and environment variable references (e.g., `${HOME}/.kube/config`).
+    > **Deprecation note**: `KUBECONFIG_PATH` was renamed to `KUBECONFIG`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `KUBECONFIG`.
+
 
 **Available Methods** (all wrapped with graceful degradation):
 
