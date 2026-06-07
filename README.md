@@ -19,7 +19,8 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
 - **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms. The `ToolRegistryService` provides a central registry for LLM-callable tools — new connectors can be added by registering their schemas and executors.
 - **One-Command Setup**: Run `bash scripts/setup.sh` on a fresh clone to check prerequisites (Node.js v20+, npm, Docker), create `.env` from `.env.example`, install dependencies, and pull Docker images — all in one step.
-- **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster. A `Makefile` provides one-command shortcuts for common dev tasks (`make up`, `make check`, `make test`, etc.).
+- **Agentic Prometheus & Loki Tool-Use**: Argus AI can query Prometheus for real-time metrics (CPU, memory, request rates) and Loki for log aggregation and error summarization — all via natural language. The LLM decides which tools to call based on your question.
+- **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster. The production `docker-compose.yml` also includes Prometheus, Loki, and Promtail for integrated observability. A `Makefile` provides one-command shortcuts for common dev tasks (`make up`, `make check`, `make test`, etc.).
 
 ## Demo
 
@@ -122,6 +123,9 @@ Once connected to a cluster, try these:
 - *"What namespaces exist?"* — lists all namespaces
 - *"Describe the nginx deployment"* — shows replica counts, conditions, and container image
 - *"Show me the logs for pod web-app-xyz in default"* — fetches recent log lines
+- *"What's the CPU usage across my cluster?"* — runs a PromQL query via `query_metrics`
+- *"Show me error logs from the api-gateway in the last hour"* — queries Loki via `query_logs`
+- *"Summarize errors from the last 2 hours"* — groups and summarizes error logs via `summarize_errors`
 
 ## Architecture
 
@@ -134,7 +138,7 @@ Argus AI uses an **agentic tool-use loop**:
 5. The result is fed back to the model, which synthesizes a natural-language answer
 6. The loop repeats (up to 5 iterations) until the model produces a final answer
 
-All connectors are strictly read-only. The tool schemas are defined in `ToolRegistryService` and can be extended to support Prometheus, Loki, ArgoCD, and other connectors.
+All connectors are strictly read-only. The tool schemas are defined in `ToolRegistryService` and currently include Kubernetes tools (`list_pods`, `list_deployments`, `list_namespaces`, `get_pod_logs`), Prometheus tools (`query_metrics`), and Loki tools (`query_logs`, `summarize_errors`). New tools can be added by registering schemas and executors.
 
 ## Project Structure
 

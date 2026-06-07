@@ -49,6 +49,12 @@ Currently registered tools:
 | `list_deployments` | List deployments with ready/available replicas and image | `KubernetesConnector.listDeployments()` |
 | `list_namespaces` | List all namespaces in the cluster | `KubernetesConnector.listNamespaces()` |
 | `get_pod_logs` | Fetch recent log lines from a specific pod | `KubernetesConnector.getPodLogs()` |
+| `query_metrics` | Run an instant PromQL query against Prometheus and return current values | `PrometheusConnector.instantQuery()` |
+| `query_logs` | Query logs from Loki using a LogQL label selector over a time range | `LokiConnector.queryLogs()` |
+| `summarize_errors` | Summarize error-level logs from Loki over the last N hours, grouped by source and message | `LokiConnector.summarizeErrors()` |
+| `query_metrics` | Run an instant PromQL query and return current value(s) | `PrometheusConnector.instantQuery()` |
+| `query_logs` | Query Loki logs using a LogQL label selector over a time range | `LokiConnector.queryLogs()` |
+| `summarize_errors` | Summarize error-level logs from Loki over the last N hours, grouped by source and message | `LokiConnector.summarizeErrors()` |
 
 To add a new tool, register a new schema in `getToolSchemas()` and add a case in `executeTool()`.
 
@@ -70,9 +76,35 @@ prometheus:
   url: "http://localhost:9090"
 ```
 
+**LLM-callable tool**: `query_metrics` — registered in `ToolRegistryService`. The LLM can call this tool with any valid PromQL expression.
+
 **Example Questions**:
 - "What is the average CPU utilization for the 'web-server' deployment over the last 24 hours?"
 - "Show me the rate of HTTP 5xx errors from the 'api-gateway' service in the last 6 hours."
+- "What's the current memory usage across all pods?"
+- "Run a query: rate(http_requests_total[5m])"
+
+## Loki Connector
+
+**Purpose**: Enables querying Loki for log aggregation, searching, and analysis.
+
+**How it works**: Executes LogQL queries against your Loki instance. It can retrieve recent logs and summarize error-level entries across time ranges.
+
+**Available methods**:
+- `isHealthy()` — health check against the Loki API
+- `queryLogs(labelSelector, start?, end?, level?, limit?)` — query logs with a LogQL label selector, optional time range, level filter, and line limit (default 100, capped at 500)
+- `summarizeErrors(hours?, labelSelector?)` — summarize error-level logs over the last N hours, grouped by source and message
+
+**Configuration**:
+```yaml
+loki:
+  url: "http://localhost:3100"
+```
+
+**Example Questions**:
+- "Show me all error logs from the 'api-gateway' service in the last hour."
+- "Summarize errors from the last 2 hours."
+- "What logs are available for the 'web-app' deployment?"
 
 ## K8sPrometheus Connector
 

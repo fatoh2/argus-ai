@@ -66,7 +66,7 @@ This guide provides instructions for setting up your development environment, ru
 
 6.  **Run Locally with Docker Compose**:
 
-    The `docker-compose.dev.yml` file provides a complete local observability stack so you can test connectors without a real Kubernetes cluster.
+    The `docker-compose.dev.yml` file provides a complete local observability stack so you can test connectors without a real Kubernetes cluster. The production `docker-compose.yml` also includes Prometheus, Loki, and Promtail services for integrated observability in production deployments.
 
     ```bash
     # Start the full stack (or use `make up` for one-command start)
@@ -82,6 +82,8 @@ This guide provides instructions for setting up your development environment, ru
     | loki | grafana/loki:latest | 3100 | Log aggregation |
     | promtail | grafana/promtail:latest | — | Ships host logs to Loki |
     | grafana | grafana/grafana:latest | 3001 | Visualises Prometheus + Loki (auto-provisioned datasources) |
+
+    > **Note**: The production `docker-compose.yml` also includes Prometheus, Loki, and Promtail (without Grafana) for production deployments. The dev stack adds Grafana for visualization.
 
     **Verify the stack is running**:
     ```bash

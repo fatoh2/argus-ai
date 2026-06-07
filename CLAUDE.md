@@ -150,6 +150,18 @@ of LLM-callable tools. It provides:
 1. **Tool schemas** — OpenAI/DeepSeek-compatible function-calling schemas via `getToolSchemas()`
 2. **Tool execution** — routes tool calls to connectors via `executeTool(name, args)`
 
+Currently registered tools:
+
+| Tool Name | Description | Connector Method |
+|---|---|---|
+| `list_pods` | List Kubernetes pods with status, ready count, and restarts | `KubernetesConnector.listPods()` |
+| `list_deployments` | List deployments with ready/available replicas and image | `KubernetesConnector.listDeployments()` |
+| `list_namespaces` | List all namespaces in the cluster | `KubernetesConnector.listNamespaces()` |
+| `get_pod_logs` | Fetch recent log lines from a specific pod | `KubernetesConnector.getPodLogs()` |
+| `query_metrics` | Run an instant PromQL query against Prometheus and return current values | `PrometheusConnector.instantQuery()` |
+| `query_logs` | Query logs from Loki using a LogQL label selector over a time range | `LokiConnector.queryLogs()` |
+| `summarize_errors` | Summarize error-level logs from Loki over the last N hours, grouped by source and message | `LokiConnector.summarizeErrors()` |
+
 To add a new tool:
 1. Add a schema to `getToolSchemas()`
 2. Add a case to the `switch` in `executeTool()`

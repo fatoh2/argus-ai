@@ -100,6 +100,84 @@ Your cluster has the following namespaces:
 | kube-node-lease | Active |
 ```
 
+## Live Prometheus Queries
+
+These examples assume the Prometheus connector is configured with a valid Prometheus URL. The LLM uses the `query_metrics` tool to run instant PromQL queries.
+
+### Query Cluster Metrics
+
+**Query**: "How many Prometheus targets are up?"
+
+**Expected AI Response**: Argus AI calls `query_metrics` with the PromQL expression `up` and returns the current state of all scraped targets.
+
+Example Output:
+```
+Prometheus targets currently being scraped:
+
+| Job | Instance | Status |
+|---|---|---|
+| prometheus | localhost:9090 | up (1) |
+| argus-ai | argus-ai:3000 | down (0) |
+
+1 target is up, 1 target is down.
+```
+
+### Query CPU / Memory
+
+**Query**: "What's the current memory usage of my containers?"
+
+**Expected AI Response**: Argus AI calls `query_metrics` with a PromQL expression like `sum(container_memory_usage_bytes) / 1e6` and returns the result in MB.
+
+Example Output:
+```
+Total container memory usage across the cluster: approximately 1,245 MB.
+```
+
+## Live Loki Queries
+
+These examples assume the Loki connector is configured with a valid Loki URL. The LLM uses `query_logs` and `summarize_errors` to inspect log data.
+
+### Query Recent Logs
+
+**Query**: "Show me error logs from the api-gateway in the last hour."
+
+**Expected AI Response**: Argus AI calls `query_logs` with `labelSelector="app=\"api-gateway\""`, `level="error"`, and `start="1h"`. It returns matching log entries.
+
+Example Output:
+```
+Error Logs for api-gateway (Last 1 hour):
+
+Found 12 error log entries.
+
+Recent errors:
+- 14:32:01 - ERROR: upstream connect error or disconnect/reset before headers
+- 14:32:02 - ERROR: connection refused to auth-service:8080
+- 14:35:10 - ERROR: rate limit exceeded for client IP 10.0.1.50
+- 14:40:00 - ERROR: upstream connect error or disconnect/reset before headers
+- 14:40:01 - ERROR: connection refused to auth-service:8080
+
+Pattern detected: The errors correlate with a brief auth-service outage between 14:32 and 14:40 UTC.
+```
+
+### Summarize Errors
+
+**Query**: "Summarize errors from the last 2 hours."
+
+**Expected AI Response**: Argus AI calls `summarize_errors` with `hours=2` and returns a grouped summary of error-level log entries.
+
+Example Output:
+```
+Error Summary (Last 2 hours):
+
+| Source | Count | Top Message |
+|---|---|---|
+| api-gateway | 12 | upstream connect error or disconnect/reset before headers |
+| auth-service | 5 | connection refused to database:5432 |
+| web-app | 3 | OutOfMemoryError: Java heap space |
+
+Total: 20 error entries across 3 sources.
+```
+
 ## Incident Summary
 
 **Query**: "Summarize the incident with the `web-app` deployment in the `production` namespace over the last 2 hours."
@@ -195,4 +273,138 @@ Recent errors:
 - 14:40:01 - ERROR: connection refused to auth-service:8080
 
 Pattern detected: The errors correlate with a brief auth-service outage between 14:32 and 14:40 UTC.
+```
+
+## Prometheus Metric Queries
+
+These examples assume the Prometheus connector is configured with a valid Prometheus URL. The LLM uses the `query_metrics` tool to execute PromQL queries.
+
+### Query CPU Usage
+
+**Query**: "What's the current CPU usage across all pods?"
+
+**Expected AI Response**: Argus AI calls `query_metrics` with a PromQL expression like `sum(container_cpu_usage_seconds_total) by (pod)` and returns the current values.
+
+Example Output:
+```
+Current CPU usage across pods:
+
+| Pod | CPU Usage (cores) |
+|---|---|
+| web-app-7d8f9c6b4f-abc12 | 0.12 |
+| web-app-7d8f9c6b4f-def34 | 0.09 |
+| redis-cache-5f6g7h8i9j-ghi56 | 0.03 |
+| coredns-1234567890-abc12 | 0.01 |
+
+Total: 0.25 cores across 4 pods.
+```
+
+### Query Memory Usage
+
+**Query**: "How much memory is the web-app deployment using?"
+
+**Expected AI Response**: Argus AI calls `query_metrics` with a PromQL expression like `sum(container_memory_usage_bytes{container="web-app"})` and returns the current value.
+
+Example Output:
+```
+The web-app deployment is currently using approximately 256 MB of memory across 2 replicas.
+```
+
+### Query Request Rate
+
+**Query**: "What's the HTTP request rate for the last 5 minutes?"
+
+**Expected AI Response**: Argus AI calls `query_metrics` with `rate(http_requests_total[5m])` and returns the current rate.
+
+Example Output:
+```
+The HTTP request rate over the last 5 minutes is approximately 42 requests/second.
+```
+
+## Loki Log Queries
+
+These examples assume the Loki connector is configured with a valid Loki URL. The LLM uses `query_logs` and `summarize_errors` tools.
+
+### Query Recent Logs
+
+**Query**: "Show me recent logs from the web-app service"
+
+**Expected AI Response**: Argus AI calls `query_logs` with a label selector like `app="web-app"` and returns recent log entries.
+
+Example Output:
+```
+Recent logs for app="web-app":
+
+[2026-06-05T14:32:01Z] INFO  Server listening on port 8080
+[2026-06-05T14:32:02Z] INFO  Connected to database
+[2026-06-05T14:35:10Z] WARN  High memory usage: 85%
+[2026-06-05T14:36:00Z] INFO  Health check passed
+```
+
+### Error Summarization
+
+**Query**: "What errors happened in the last hour?"
+
+**Expected AI Response**: Argus AI calls `summarize_errors` with a 1-hour look-back window and returns a grouped summary of error-level logs.
+
+Example Output:
+```
+Error Summary (last 1 hour):
+
+| Source | Count | Sample Message |
+|---|---|---|
+| auth-service | 12 | "java.lang.NullPointerException: UserAuthenticator.authenticate()" |
+| api-gateway | 5 | "HTTP 502 upstream connection refused" |
+| web-app | 3 | "OutOfMemoryError: Java heap space" |
+
+Total: 20 error events across 3 services.
+```
+
+### Scoped Error Search
+
+**Query**: "Show me errors from the production namespace in the last 30 minutes"
+
+**Expected AI Response**: Argus AI calls `query_logs` with a label selector scoped to the production namespace and a level filter for "error".
+
+Example Output:
+```
+Error logs from namespace="production" (last 30 minutes):
+
+[2026-06-05T15:01:23Z] ERROR database connection timeout after 30s
+[2026-06-05T15:05:47Z] ERROR failed to process payment order #12345
+[2026-06-05T15:12:01Z] ERROR rate limit exceeded for API key sk-...abc
+```
+
+## Cross-Connector Incident Analysis
+
+These examples combine multiple connectors to provide comprehensive incident analysis.
+
+### Full Incident Investigation
+
+**Query**: "What happened to the payment-service in production over the last 2 hours?"
+
+**Expected AI Response**: Argus AI orchestrates calls across Kubernetes, Prometheus, and Loki to build a complete picture.
+
+Example Output:
+```
+Incident Analysis: payment-service (production) — Last 2 hours
+
+1. Kubernetes Status:
+   - Deployment: payment-service (3 replicas)
+   - Current: 3/3 ready
+   - Events: 2 pod restarts (15:03 and 15:45 UTC)
+
+2. Prometheus Metrics:
+   - CPU: Spiked to 85% at 15:00 UTC, now at 45%
+   - Memory: Peaked at 1.2 GB at 15:00 UTC, now at 600 MB
+   - Error rate: 5xx responses peaked at 12% at 15:00 UTC
+
+3. Loki Logs:
+   - 15:00:23 UTC — ERROR database connection pool exhausted
+   - 15:00:45 UTC — ERROR timeout waiting for connection from pool
+   - 15:03:12 UTC — WARN pod restart detected (OOMKilled)
+   - 15:45:30 UTC — ERROR connection reset by peer
+
+Root Cause: Database connection pool exhaustion triggered by a traffic surge at 15:00 UTC.
+Resolution: Automatic pod restarts and connection pool recovery. No manual intervention needed.
 ```
