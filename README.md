@@ -5,7 +5,9 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 ## Features
 
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
-- **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
+- **Agentic Tool Use**: The LLM autonomously decides which infrastructure systems to query via OpenAI-compatible function calling, runs the read-only connectors, and synthesizes the live results into an answer. It can chain multiple tool calls in one turn (e.g. list deployments **and** namespaces) before responding.
+- **Web Chat Dashboard**: A built-in chat UI is served at `/` (e.g. `http://localhost:3000`) — no separate frontend needed. It renders markdown tables, code blocks, and lists, shows a live health indicator, and talks to the same `/chat` endpoint.
+- **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, and ArgoCD.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
 - **Graceful Degradation**: All connectors handle timeouts and failures gracefully — if a service is unreachable, the underlying HTTP request is cancelled via AbortController and the LLM receives a structured error and informs the user instead of crashing.
 - **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
@@ -23,14 +25,17 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 [Link to demo video/gif]
 
-Argus AI currently supports read-only integration with:
+Argus AI exposes read-only connectors to the LLM as callable tools. The model
+picks the right one(s) per question:
 
-- **Kubernetes**: Pod status, deployments, events, and resource utilization.
-- **Prometheus**: Metric queries, historical data, and alert status.
-- **Loki**: Log aggregation, searching, and analysis — including error summarization across time ranges.
-- **ArgoCD**: Application sync status, health checks, and cluster-wide deployment summaries.
-- **GitHub Actions**: Workflow run status, history, and job details.
-- **Argus Monitor (Optional)**: Alerts and wallet activity from the Argus Monitor platform.
+- **Kubernetes** (`list_pods`, `list_deployments`, `list_namespaces`, `get_pod_logs`): pod/deployment status, ready/restart counts, namespaces, and pod logs. Connects via the `KUBECONFIG` file using `@kubernetes/client-node`.
+- **Prometheus** (`query_metrics`): instant PromQL queries for any metric (CPU, memory, request rates, target health).
+- **Loki** (`query_logs`, `summarize_errors`): LogQL queries and grouped error-log summaries over a time range.
+- **ArgoCD** (`list_argocd_apps`, `get_argocd_app`, `argocd_summary`): application sync status, health checks, and cluster-wide deployment summaries.
+
+> Connectors with no configuration (missing env var) degrade gracefully — they
+> report themselves offline to the model rather than failing the request.
+> Planned: GitHub Actions and Argus Monitor connectors (not yet wired as tools).
 
 ## Quickstart: Get Argus AI Querying in 10 Minutes
 
@@ -130,11 +135,11 @@ Key environment variables:
 | `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
 | `LLM_MAX_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
 | `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
-| `KUBECONFIG_PATH` | Path to kubeconfig file | No | In-cluster config |
-| `PROMETHEUS_URL` | Prometheus URL | No | `http://localhost:9090` |
-| `LOKI_URL` | Loki URL | No | `http://localhost:3100` |
-| `ARGOCD_URL` | ArgoCD URL | No | `https://localhost:8080` |
-| `ARGOCD_AUTH_TOKEN` | ArgoCD auth token | No | — |
+| `KUBECONFIG` | Path to a kubeconfig file. When unset, the Kubernetes tools report offline. | No | — |
+| `PROMETHEUS_URL` | Prometheus base URL (enables `query_metrics`). | No | — |
+| `LOKI_URL` | Loki base URL (enables `query_logs` / `summarize_errors`). | No | — |
+| `ARGOCD_URL` | ArgoCD base URL (enables the ArgoCD tools). | No | — |
+| `ARGOCD_TOKEN` | ArgoCD bearer token for API auth. | No | — |
 | `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No | — |
 | `ARGUS_MONITOR_DB_URL` | Argus Monitor DB connection string | No | — |
 
