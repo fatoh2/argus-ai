@@ -4,10 +4,10 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 ## Features
 
-- **Agentic Kubernetes Tool-Use**: Argus AI can query live Kubernetes clusters — list pods, deployments, namespaces, fetch pod logs, and describe deployments. The LLM decides which tools to call based on your question, executes them, and synthesizes the results into a natural-language answer.
-- **Chat Dashboard UI**: A built-in web chat dashboard served at `http://localhost:3000/` — no separate frontend build needed. Just start the app and open your browser.
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
-- **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, ArgoCD, and GitHub Actions.
+- **Agentic Tool Use**: The LLM autonomously decides which infrastructure systems to query via OpenAI-compatible function calling, runs the read-only connectors, and synthesizes the live results into an answer. It can chain multiple tool calls in one turn (e.g. list deployments **and** namespaces) before responding.
+- **Web Chat Dashboard**: A built-in chat UI is served at `/` (e.g. `http://localhost:3000`) — no separate frontend needed. It renders markdown tables, code blocks, and lists, shows a live health indicator, and talks to the same `/chat` endpoint.
+- **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, and ArgoCD.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
 - **Graceful Degradation**: All connectors handle timeouts and failures gracefully — if a service is unreachable, the underlying HTTP request is cancelled via AbortController and the LLM receives a structured error and informs the user instead of crashing.
 - **Safe Logging**: Error logs automatically redact API keys, bearer tokens, and secrets — no sensitive credentials leak into log aggregation systems.
@@ -17,27 +17,29 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 - **LLM Error Resilience**: LLM calls have a 30-second hard timeout (returns `504 Gateway Timeout`), automatic retry on 5xx errors (up to 1 retry), and a 50k-token prompt limit guard that truncates oldest history first. A `GET /health/llm` endpoint provides LLM health monitoring with latency tracking.
 - **LLM Error Classification**: LLM errors are mapped to appropriate HTTP status codes — rate limits return `429 Too Many Requests`, auth failures return `401 Unauthorized`, and server errors return `502 Bad Gateway`.
 - **Proactive Monitoring (Future)**: Future enhancements will enable Argus AI to proactively identify potential problems and anomalies before they impact users.
-- **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms. The `ToolRegistryService` provides a central registry for LLM-callable tools — new connectors can be added by registering their schemas and executors.
+- **Extensible Connector Architecture**: Easily add new read-only connectors to integrate with additional tools and platforms.
 - **One-Command Setup**: Run `bash scripts/setup.sh` on a fresh clone to check prerequisites (Node.js v20+, npm, Docker), create `.env` from `.env.example`, install dependencies, and pull Docker images — all in one step.
-- **Agentic Prometheus & Loki Tool-Use**: Argus AI can query Prometheus for real-time metrics (CPU, memory, request rates) and Loki for log aggregation and error summarization — all via natural language. The LLM decides which tools to call based on your question.
-- **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster. The production `docker-compose.yml` also includes Prometheus, Loki, and Promtail for integrated observability. A `Makefile` provides one-command shortcuts for common dev tasks (`make up`, `make check`, `make test`, etc.).
+- **Local Dev Stack**: A `docker-compose.dev.yml` provides a complete local observability stack (Prometheus, Loki, Grafana) for testing connectors without a real Kubernetes cluster. A `Makefile` provides one-command shortcuts for common dev tasks (`make up`, `make check`, `make test`, etc.).
 
 ## Demo
 
 [Link to demo video/gif]
 
-Argus AI currently supports read-only integration with:
+Argus AI exposes read-only connectors to the LLM as callable tools. The model
+picks the right one(s) per question:
 
-- **Kubernetes**: Pod status, deployments, namespaces, events, and pod logs — queried live via `@kubernetes/client-node`.
-- **Prometheus**: Metric queries, historical data, and alert status.
-- **Loki**: Log aggregation, searching, and analysis — including error summarization across time ranges.
-- **ArgoCD**: Application sync status, health checks, and cluster-wide deployment summaries.
-- **GitHub Actions**: Workflow run status, history, and job details.
-- **Argus Monitor (Optional)**: Alerts and wallet activity from the Argus Monitor platform.
+- **Kubernetes** (`list_pods`, `list_deployments`, `list_namespaces`, `get_pod_logs`): pod/deployment status, ready/restart counts, namespaces, and pod logs. Connects via the `KUBECONFIG` file using `@kubernetes/client-node`.
+- **Prometheus** (`query_metrics`): instant PromQL queries for any metric (CPU, memory, request rates, target health).
+- **Loki** (`query_logs`, `summarize_errors`): LogQL queries and grouped error-log summaries over a time range.
+- **ArgoCD** (`list_argocd_apps`, `get_argocd_app`, `argocd_summary`): application sync status, health checks, and cluster-wide deployment summaries.
+
+> Connectors with no configuration (missing env var) degrade gracefully — they
+> report themselves offline to the model rather than failing the request.
+> Planned: GitHub Actions and Argus Monitor connectors (not yet wired as tools).
 
 ## Quickstart: Get Argus AI Querying in 10 Minutes
 
-This guide will help any DevOps team point Argus AI at their Kubernetes cluster and start querying within 10 minutes.
+This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s cluster and start querying within 10 minutes.
 
 1.  **Prerequisites**: Ensure you have Node.js (v20+), npm, and Docker installed. The setup script will verify all of these for you.
 
@@ -53,145 +55,167 @@ This guide will help any DevOps team point Argus AI at their Kubernetes cluster 
     ```bash
     bash scripts/setup.sh
     ```
-    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs dependencies, and pulls Docker images. After it completes, skip ahead to step 6.
+    This checks prerequisites (Node.js v20+, npm, Docker), creates `.env` from `.env.example`, installs dependencies, and pulls Docker images. After it completes, skip to step 6 to run the app.
 
-4.  **Configure environment** (manual alternative):
+    > **Note**: If you prefer to configure things manually, follow steps 4–6 instead.
+
+4.  **Configure your connectors**:
+    Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
     ```bash
-    cp .env.example .env
-    # Edit .env — set DEEPSEEK_API_KEY=your-key-here
+    cp config.example.yaml config.yaml
+    ```
+    **Sensitive fields (like API keys and tokens) in `config.yaml` are designed to be populated via environment variables (e.g., `${DEEPSEEK_API_KEY}`). Set these environment variables in your shell or a `.env` file.**
+    **Never commit `config.yaml` to Git if it contains sensitive information!**
+
+    For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
+
+5.  **Install dependencies**:
+    ```bash
     npm install
     ```
 
-5.  **Start the app**:
+6.  **Run locally (for development/testing)**:
 
-    **Option A — Dev stack (observability + hot reload)**:
+    **Option A — Makefile (recommended, includes full observability stack)**:
     ```bash
     make up
     ```
-    This starts the Docker dev stack (Prometheus, Loki, Grafana) and the NestJS app in watch mode. The app is available at `http://localhost:3000`.
+    This starts the Docker dev stack (Prometheus, Loki, Grafana) and the NestJS app in watch mode. The app is auto-wired to the local Prometheus and Loki instances. See [docs/development.md](docs/development.md) for details.
 
-    **Option B — Production stack (Redis + argus-ai)**:
+    Other useful Makefile commands:
     ```bash
-    docker compose up -d
+    make down    # Stop the dev stack
+    make check   # Type-check + lint
+    make test    # Run tests
+    make health  # Check LLM health endpoint
+    make logs    # Tail Docker logs
+    make help    # Show all commands
     ```
-    This starts Redis and the argus-ai app. The app is available at `http://localhost:3000`.
 
-    **Option C — Node.js only**:
+    **Option B — Docker Compose directly**:
+    ```bash
+    docker compose -f docker-compose.dev.yml up -d
+    npm run start:dev
+    ```
+
+    **Option C — Direct Node.js (no observability stack)**:
     ```bash
     npm run start:dev
     ```
-    This starts the NestJS backend alone. You will need a separate Redis, Prometheus, and Loki instance.
-
-6.  **Open the dashboard**: Navigate to `http://localhost:3000` in your browser. You'll see the Argus AI chat dashboard with example prompts to get started.
+    This will start the NestJS backend alone, typically on `http://localhost:3000`. You will need a separate Prometheus and Loki instance.
 
 7.  **Start Querying!**
-    You can interact with Argus AI via the web dashboard or directly via the API:
+    Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
 
     ```bash
     curl -X POST http://localhost:3000/chat \
-      -H "Content-Type: application/json" \
-      -d '{"message": "What pods are running in my cluster?"}'
+        -H "Content-Type: application/json" \
+        -d '{"message": "What is the status of my web-app deployment?"}'
     ```
 
-    If you have a kubeconfig available, Argus AI will query your live cluster and return real data. Without one, it gracefully reports that the Kubernetes connector is offline.
+    **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
 
-### Connecting to a Kubernetes Cluster
-
-To let Argus AI query your live Kubernetes cluster:
-
-1. **Export your kubeconfig** to `./.kube/config` in the project root:
-   ```bash
-   mkdir -p .kube
-   cp ~/.kube/config .kube/config
-   ```
-
-2. **Set the `KUBECONFIG` environment variable** in `.env`:
-   ```
-   KUBECONFIG=/kube/config
-   ```
-
-3. **Restart the app**. When running via Docker Compose, the `./.kube` directory is automatically mounted into the container at `/kube` (read-only). The connector loads the kubeconfig from `KUBECONFIG` and starts answering live queries.
-
-   > **Security**: The `.kube/` directory is gitignored. Never commit kubeconfig files to the repository.
-
-### Example Queries
-
-Once connected to a cluster, try these:
-
-- *"What pods are running in my cluster?"* — lists all pods with status, ready count, and restarts
-- *"How many deployments are in the default namespace?"* — lists deployments with replica counts and images
-- *"What namespaces exist?"* — lists all namespaces
-- *"Describe the nginx deployment"* — shows replica counts, conditions, and container image
-- *"Show me the logs for pod web-app-xyz in default"* — fetches recent log lines
-- *"What's the CPU usage across my cluster?"* — runs a PromQL query via `query_metrics`
-- *"Show me error logs from the api-gateway in the last hour"* — queries Loki via `query_logs`
-- *"Summarize errors from the last 2 hours"* — groups and summarizes error logs via `summarize_errors`
-
-## Architecture
-
-Argus AI uses an **agentic tool-use loop**:
-
-1. User sends a natural-language query to `POST /chat`
-2. `LlmService` sends the query to DeepSeek V3 along with tool schemas (from `ToolRegistryService`)
-3. The model decides whether to answer directly or call a tool (e.g., `list_pods`, `list_deployments`)
-4. If the model requests a tool call, `ToolRegistryService` executes it against the live infrastructure connector
-5. The result is fed back to the model, which synthesizes a natural-language answer
-6. The loop repeats (up to 5 iterations) until the model produces a final answer
-
-All connectors are strictly read-only. The tool schemas are defined in `ToolRegistryService` and currently include Kubernetes tools (`list_pods`, `list_deployments`, `list_namespaces`, `get_pod_logs`), Prometheus tools (`query_metrics`), and Loki tools (`query_logs`, `summarize_errors`). New tools can be added by registering schemas and executors.
-
-## Project Structure
-
-```
-src/
-  app.module.ts           # Root module — ConfigModule (global), ChatModule, LlmModule, ConnectorsModule
-  app.controller.ts       # Health check endpoint
-  app.service.ts          # Core application service
-  main.ts                 # Bootstrap — global ValidationPipe with whitelist, serves public/ dashboard
-  chat/                   # Chat API module (REST endpoint)
-    chat.controller.ts    # POST /chat — input sanitization (strips control chars)
-    chat.module.ts        # ThrottlerModule (20 req/min) + ChatRateLimitGuard
-    chat-rate-limit.guard.ts  # Custom rate limit guard with hashed IP logging
-    dto/
-      chat.dto.ts         # ChatDto — IsString, MaxLength(4000)
-  connectors/
-    connectors.module.ts  # Registers and exports all connectors
-    utils/
-      connector-error.ts  # Graceful degradation utility (timeout + AbortController + structured errors + log sanitization)
-    kubernetes.connector.ts  # Real K8s connector via @kubernetes/client-node (listPods, listDeployments, listNamespaces, describeDeployment, getPodLogs)
-    loki.connector.ts     # LogQL query wrapper
-    argocd.connector.ts   # ArgoCD API client
-  llm/                    # LLM integration (DeepSeek V3 primary, Gemini optional fallback)
-    llm.module.ts         # LlmModule — imports DeepSeekModule + GeminiModule, registers LlmService
-    llm.service.ts        # LlmService — tool-use loop with 30s timeout, retry, token guard
-    llm.controller.ts     # GET /health/llm — LLM health check endpoint
-    deepseek/             # DeepSeek V3 API client (primary LLM) with agentic tool-use loop
-    gemini/               # Google Gemini API client (optional fallback)
-    tools/
-      tool-registry.service.ts  # Central registry of LLM-callable tool schemas + executor
-  health/                 # Health check module
-    health.controller.ts  # GET /health — overall system health
-    health.service.ts     # Health check logic
-  public/                 # Static assets served by the app
-    index.html            # Chat dashboard UI (vanilla JS, no build step)
-```
+    Refer to [Example Queries](docs/examples.md) for more example queries.
 
 ## Configuration
 
-See [docs/configuration.md](docs/configuration.md) for full configuration reference.
+Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) for configuration management. Settings are loaded from:
+
+1. **Environment variables** (highest priority) — set in your shell or a `.env` file
+2. **`config.yaml`** — for non-sensitive defaults and connector endpoint URLs
+
+The `ConfigModule` is registered globally in `app.module.ts` with `isGlobal: true`, making `ConfigService` available to all modules without additional imports.
 
 Key environment variables:
 
-| Variable | Description | Required |
-|---|---|---|
-| `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | **Yes** |
-| `KUBECONFIG` | Path to kubeconfig file for live cluster queries | No |
-| `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No |
+| Variable | Description | Required | Default |
+|---|---|---|---|
+| `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | Yes | — |
+| `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No | — |
+| `LLM_TIMEOUT_MS` | LLM call timeout in milliseconds | No | `30000` |
+| `LLM_MAX_TOKENS` | Maximum prompt tokens before truncation | No | `50000` |
+| `LLM_MAX_RETRIES` | Number of retries on 5xx LLM errors | No | `1` |
+| `KUBECONFIG` | Path to a kubeconfig file. When unset, the Kubernetes tools report offline. | No | — |
+| `PROMETHEUS_URL` | Prometheus base URL (enables `query_metrics`). | No | — |
+| `LOKI_URL` | Loki base URL (enables `query_logs` / `summarize_errors`). | No | — |
+| `ARGOCD_URL` | ArgoCD base URL (enables the ArgoCD tools). | No | — |
+| `ARGOCD_TOKEN` | ArgoCD bearer token for API auth. | No | — |
+| `GITHUB_TOKEN` | GitHub PAT with `workflow` scope | No | — |
+| `ARGUS_MONITOR_DB_URL` | Argus Monitor DB connection string | No | — |
+
+> **Migration notes**:
+> - `KUBECONFIG_PATH` was renamed to `KUBECONFIG`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `KUBECONFIG`.
+> - `ARGOCD_AUTH_TOKEN` was renamed to `ARGOCD_TOKEN`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `ARGOCD_TOKEN`.
+
+
+## Architecture
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────────┐
+│  User/Client │────▶│  Chat API    │────▶│  LlmService     │
+│  (curl, UI)  │     │  POST /chat  │     │  (DeepSeek V3   │
+└─────────────┘     └──────────────┘     │   + Gemini)     │
+                                         └────────┬────────┘
+                                                  │
+                    ┌─────────────────────────────┼─────────────────────────┐
+                    │                             │                         │
+                    ▼                             ▼                         ▼
+          ┌─────────────────┐          ┌──────────────────┐      ┌──────────────────┐
+          │  K8s Connector   │          │  Prometheus       │      │  Loki Connector   │
+          │  (read-only)     │          │  Connector        │      │  (read-only)      │
+          └─────────────────┘          │  (read-only)      │      └──────────────────┘
+                                        └──────────────────┘
+```
+
+## API
+
+### `POST /chat`
+
+Send a natural language query about your infrastructure.
+
+**Request:**
+```json
+{
+  "message": "What is the status of my web-app deployment?"
+}
+```
+
+**Response:**
+```json
+{
+  "response": "The web-app deployment in the production namespace has 3/3 pods running. All pods are healthy with no recent restarts."
+}
+```
+
+**Rate Limiting**: 20 requests per minute per IP. Exceeding this returns `429 Too Many Requests` with a `Retry-After` header.
+
+**Validation**: Messages are limited to 4000 characters. Control characters and null bytes are stripped. Empty messages return `400 Bad Request`.
+
+### `GET /health/llm`
+
+Check if the LLM service is responsive.
+
+**Response:**
+```json
+{
+  "ok": true,
+  "latencyMs": 1234
+}
+```
 
 ## Development
 
-See [docs/development.md](docs/development.md) for local development setup and testing.
+See [Development Guide](docs/development.md) for setup instructions, project structure, and contribution guidelines.
+
+## Configuration Reference
+
+- [Configuration Guide](docs/configuration.md) — environment variables and config.yaml
+- [Connector Setup](docs/connectors.md) — per-connector configuration details
 
 ## Security
 
-See [docs/security.md](docs/security.md) for security best practices.
+See [Security Guide](docs/security.md) for security best practices, input validation, and safe logging.
+
+## License
+
+MIT

@@ -11,12 +11,6 @@ This document outlines the security considerations and best practices for deploy
 - The `config.yaml` file should only contain non-sensitive configuration parameters or references to environment variables using the `${ENV_VAR_NAME}` syntax.
 - **Never commit `config.yaml` or `.env` files with actual credentials to Git.**
 
-### Kubeconfig Security
-- The `.kube/` directory is gitignored. Never commit kubeconfig files to the repository.
-- When mounting a kubeconfig into the Docker container, it is mounted **read-only** (`./.kube:/kube:ro`) to prevent the container from modifying it.
-- The Kubernetes connector is strictly **read-only** — it only calls `get`, `list`, and `describe` operations. It never creates, updates, or deletes resources.
-- Consider using a dedicated service account with minimal read-only RBAC permissions instead of a full admin kubeconfig.
-
 ### Secure Environment Variable Usage
 - Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) to securely load and validate environment variables.
 - The `ConfigModule` is registered globally in `app.module.ts` with `isGlobal: true`, making `ConfigService` available to all modules.
@@ -66,12 +60,6 @@ The `/chat` endpoint implements multiple layers of input validation:
 ### Read-Only Access
 - Argus AI is designed to operate with **read-only access** to all integrated connectors (Kubernetes, Prometheus, Loki, ArgoCD, GitHub Actions, Argus Monitor).
 - Ensure that the credentials provided to Argus AI (e.g., Kubernetes service accounts, GitHub tokens) are scoped to the minimum necessary read-only permissions.
-- The Kubernetes connector only calls `get`, `list`, and `describe` API operations — it never creates, updates, or deletes resources.
-
-### Tool Registry Security
-- The `ToolRegistryService` only exposes tools that map to read-only connector methods.
-- Tool schemas are predefined and hardcoded — the LLM cannot invent new tool calls or modify existing ones.
-- Tool execution is routed through a strict `switch` statement — unknown tool names return an error and are never executed against infrastructure.
 
 ### Graceful Degradation with Safe Error Handling
 - All connector methods are wrapped with `withConnectorErrorHandling()` which provides:
@@ -81,53 +69,78 @@ The `/chat` endpoint implements multiple layers of input validation:
 - This ensures that even when a connector fails, no sensitive credentials are leaked in logs.
 
 ### Health Checks
-- Every connector implements an `isHealthy()` method that can be used to verify connectivity before making operational queries.
-- The `GET /health` endpoint provides an overall system health summary.
+- Every connector implements an `isHealthy()` method that verifies connectivity before executing queries.
+- If an endpoint is unreachable, the connector returns a graceful error rather than crashing the application.
+- The LLM service also exposes `GET /health/llm` which returns `{ ok: boolean, latencyMs: number }`.
+
+### Timeout Protection
+- All connector calls are wrapped with a **10-second timeout** via the shared `withConnectorErrorHandling()` utility.
+- The timeout uses `AbortController` to cancel the underlying HTTP request — a slow or dead connector will not hold up the entire query pipeline or leave dangling connections.
+- If a connector hangs or is unreachable, the call is aborted and a structured `ConnectorErrorResult` is returned instead of blocking the request indefinitely.
+- This prevents cascading failures — a slow or dead connector will not hold up the entire query pipeline.
+
+### Sanitized Error Logging
+- Connector error logs include the connector name, error type, and duration, but **never API keys, tokens, or secrets**.
+- A `sanitizeLog()` utility automatically redacts values matching common credential patterns from log output:
+
+```typescript
+function sanitizeLog(message: string): string {
+  return message.replace(
+    /(?:bearer\s+|api[_-]?key\s*[:=]\s*|token\s*[:=]\s*|secret\s*[:=]\s*)(['"]?)[a-zA-Z0-9_\-.]{16,}\1/gi,
+    '$1***redacted***$1',
+  );
+}
+```
 
 ## 4. LLM Security
 
-### API Key Management
-- DeepSeek and Gemini API keys are loaded from environment variables (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`).
-- If `DEEPSEEK_API_KEY` is not set, the app still boots but returns errors on `/chat` — it does not crash.
-- If `GEMINI_API_KEY` is not set, the Gemini fallback is gracefully skipped.
+### Safe Logging
+The LLM service (`LlmService`) implements its own `sanitizeForLog()` utility that redacts:
+- Alphanumeric strings 20+ characters (API keys, tokens)
+- URLs containing potential tokens
+- JSON fields named `apiKey`, `token`, `secret`, `password`
 
-### Timeout and Retry Protection
-- LLM calls have a **30-second hard timeout** to prevent runaway requests.
-- On 5xx server errors, the call is retried once before returning an error to the user.
-- Timeout errors are NOT retried — they immediately return `504 Gateway Timeout`.
+The LLM service **never logs full prompt or response content** — only metadata (token count, message count, attempt number, success/failure status).
+
+### Error Classification
+LLM errors are mapped to appropriate HTTP status codes to prevent information leakage:
+
+| Error Type | HTTP Status | Logged As |
+|---|---|---|
+| Timeout | `504 Gateway Timeout` | `LLM request timed out` |
+| Rate limit / quota | `429 Too Many Requests` | `LLM rate limit exceeded` |
+| Auth failure | `401 Unauthorized` | `LLM authentication failed` |
+| Server error | `502 Bad Gateway` | `LLM service unavailable after retries` |
+
+Error messages are sanitized before logging — the original error message is passed through `sanitizeForLog()` to redact any embedded secrets.
 
 ### Token Limit Guard
-- Conversation history is truncated when estimated tokens exceed `LLM_MAX_TOKENS` (default 50k), with oldest messages removed first.
-- This prevents excessively long prompts that could lead to degraded model performance or increased costs.
+- Prompts exceeding 50k estimated tokens are truncated by removing oldest messages first.
+- This prevents excessively large prompts from being sent to the LLM API, reducing the risk of prompt injection through accumulated history.
+
+### Timeout Protection
+- LLM calls have a **30-second hard timeout** enforced via `Promise.race`.
+- Timeout errors are NOT retried — they fail fast with `504 Gateway Timeout`.
+- This prevents a malicious or buggy prompt from holding the LLM connection indefinitely.
 
 ## 5. Deployment Security
 
-### Docker Container Security
-- The production `docker-compose.yml` mounts the kubeconfig directory **read-only** (`:ro`).
-- The container runs with the default non-root user where possible.
-- The `extra_hosts` entry (`host.docker.internal:host-gateway`) is only needed for local development with k3d — remove it in production deployments.
-
 ### Network Security
-- The `/chat` endpoint is rate-limited to 20 requests per minute per IP.
-- All connector communication should be over HTTPS in production.
-- Consider deploying behind a reverse proxy (e.g., Nginx, Traefik) for additional security layers (TLS termination, IP whitelisting, WAF).
+- Deploy Argus AI within a private network or behind a reverse proxy.
+- Use HTTPS for all external communications.
+- Restrict network access to only the necessary endpoints (Kubernetes API, Prometheus, Loki, ArgoCD, GitHub API).
 
-## 6. Logging Security
-
-### Log Sanitization
-- All error logs are sanitized to remove sensitive information before being written.
-- The `sanitizeLog()` function uses regex patterns to redact:
-  - API keys and tokens (strings of 20+ alphanumeric/underscore/hyphen characters)
-  - Bearer tokens in HTTP headers
-- Rate limit hits are logged with a **hashed IP** (SHA-256) rather than the raw IP address, protecting user privacy.
-
-## 7. Dependency Security
+### Secrets Management
+- Use a secrets management solution (e.g., Kubernetes Secrets, HashiCorp Vault, AWS Secrets Manager) for production deployments.
+- Avoid hardcoding secrets in configuration files or environment variables in plain text.
 
 ### Regular Updates
-- Keep dependencies up to date, especially `@kubernetes/client-node` and LLM client libraries.
-- Monitor for security advisories related to the `@kubernetes/client-node` library.
-- Use `npm audit` regularly to check for known vulnerabilities.
+- Keep all dependencies up to date to patch known vulnerabilities.
+- Regularly update the DeepSeek API client library (primary) and Gemini API client library (optional fallback) and other dependencies.
+- Monitor security advisories for the NestJS framework and related packages.
 
-### Minimal Dependencies
-- Argus AI uses a minimal set of carefully chosen dependencies to reduce the attack surface.
-- New dependencies should be evaluated for security posture before addition.
+## See Also
+
+- [Configuration Reference](configuration.md) — environment variable setup
+- [Development Guide](development.md) — local development setup
+- [Connectors Documentation](connectors.md) — connector architecture

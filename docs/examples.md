@@ -2,182 +2,6 @@
 
 This document provides examples of natural language queries you can ask Argus AI and the types of responses you can expect. These examples demonstrate how Argus AI leverages its various connectors to provide insightful and actionable information.
 
-## Live Kubernetes Queries
-
-These examples assume the Kubernetes connector is configured with a valid kubeconfig. The LLM uses the agentic tool-use loop to call `list_pods`, `list_deployments`, `list_namespaces`, `describeDeployment`, or `getPodLogs` as needed.
-
-### List All Pods
-
-**Query**: "What pods are running in my cluster?"
-
-**Expected AI Response**: Argus AI calls `list_pods` (no namespace filter) and returns a formatted table of all pods across all namespaces.
-
-Example Output:
-```
-Here are the pods running in your cluster:
-
-| Namespace | Name | Status | Ready | Restarts | Node |
-|---|---|---|---|---|---|
-| default | web-app-7d8f9c6b4f-abc12 | Running | 2/2 | 0 | k3d-agent-0 |
-| default | web-app-7d8f9c6b4f-def34 | Running | 2/2 | 1 | k3d-agent-1 |
-| default | redis-cache-5f6g7h8i9j-ghi56 | Running | 1/1 | 0 | k3d-server-0 |
-| kube-system | coredns-1234567890-abc12 | Running | 1/1 | 0 | k3d-server-0 |
-| kube-system | metrics-server-9876543210-def34 | Running | 1/1 | 0 | k3d-server-0 |
-| kube-system | local-path-provisioner-5678901234-ghi56 | Running | 1/1 | 0 | k3d-server-0 |
-
-Total: 6 pods across 3 namespaces.
-```
-
-### List Deployments
-
-**Query**: "How many deployments are in the default namespace?"
-
-**Expected AI Response**: Argus AI calls `list_deployments` scoped to the `default` namespace.
-
-Example Output:
-```
-There are 2 deployments in the default namespace:
-
-| Name | Ready | Available | Image |
-|---|---|---|---|
-| web-app | 2/2 | 2 | nginx:1.25 |
-| redis-cache | 1/1 | 1 | redis:7-alpine |
-```
-
-### Describe a Deployment
-
-**Query**: "Describe the web-app deployment"
-
-**Expected AI Response**: Argus AI calls `describeDeployment` for the `web-app` deployment in the `default` namespace.
-
-Example Output:
-```
-Deployment: web-app
-Namespace: default
-Replicas: 2
-Ready: 2/2
-Available: 2
-Updated: 2
-Image: nginx:1.25
-
-Conditions:
-- Available: True (deployment has minimum availability)
-- Progressing: True (ReplicaSet has successfully progressed)
-```
-
-### Pod Logs
-
-**Query**: "Show me the logs for pod web-app-7d8f9c6b4f-abc12"
-
-**Expected AI Response**: Argus AI calls `getPodLogs` for the specified pod.
-
-Example Output:
-```
-Logs for web-app-7d8f9c6b4f-abc12 (default namespace):
-
-[2026-06-05T14:32:01Z] INFO  Server listening on port 8080
-[2026-06-05T14:32:02Z] INFO  Connected to database
-[2026-06-05T14:32:05Z] DEBUG Processing request GET /api/health
-[2026-06-05T14:32:06Z] INFO  Health check passed
-[2026-06-05T14:35:10Z] WARN  High memory usage: 85%
-```
-
-### List Namespaces
-
-**Query**: "What namespaces exist in my cluster?"
-
-**Expected AI Response**: Argus AI calls `listNamespaces` and returns all namespaces.
-
-Example Output:
-```
-Your cluster has the following namespaces:
-
-| Name | Status |
-|---|---|
-| default | Active |
-| kube-system | Active |
-| kube-public | Active |
-| kube-node-lease | Active |
-```
-
-## Live Prometheus Queries
-
-These examples assume the Prometheus connector is configured with a valid Prometheus URL. The LLM uses the `query_metrics` tool to run instant PromQL queries.
-
-### Query Cluster Metrics
-
-**Query**: "How many Prometheus targets are up?"
-
-**Expected AI Response**: Argus AI calls `query_metrics` with the PromQL expression `up` and returns the current state of all scraped targets.
-
-Example Output:
-```
-Prometheus targets currently being scraped:
-
-| Job | Instance | Status |
-|---|---|---|
-| prometheus | localhost:9090 | up (1) |
-| argus-ai | argus-ai:3000 | down (0) |
-
-1 target is up, 1 target is down.
-```
-
-### Query CPU / Memory
-
-**Query**: "What's the current memory usage of my containers?"
-
-**Expected AI Response**: Argus AI calls `query_metrics` with a PromQL expression like `sum(container_memory_usage_bytes) / 1e6` and returns the result in MB.
-
-Example Output:
-```
-Total container memory usage across the cluster: approximately 1,245 MB.
-```
-
-## Live Loki Queries
-
-These examples assume the Loki connector is configured with a valid Loki URL. The LLM uses `query_logs` and `summarize_errors` to inspect log data.
-
-### Query Recent Logs
-
-**Query**: "Show me error logs from the api-gateway in the last hour."
-
-**Expected AI Response**: Argus AI calls `query_logs` with `labelSelector="app=\"api-gateway\""`, `level="error"`, and `start="1h"`. It returns matching log entries.
-
-Example Output:
-```
-Error Logs for api-gateway (Last 1 hour):
-
-Found 12 error log entries.
-
-Recent errors:
-- 14:32:01 - ERROR: upstream connect error or disconnect/reset before headers
-- 14:32:02 - ERROR: connection refused to auth-service:8080
-- 14:35:10 - ERROR: rate limit exceeded for client IP 10.0.1.50
-- 14:40:00 - ERROR: upstream connect error or disconnect/reset before headers
-- 14:40:01 - ERROR: connection refused to auth-service:8080
-
-Pattern detected: The errors correlate with a brief auth-service outage between 14:32 and 14:40 UTC.
-```
-
-### Summarize Errors
-
-**Query**: "Summarize errors from the last 2 hours."
-
-**Expected AI Response**: Argus AI calls `summarize_errors` with `hours=2` and returns a grouped summary of error-level log entries.
-
-Example Output:
-```
-Error Summary (Last 2 hours):
-
-| Source | Count | Top Message |
-|---|---|---|
-| api-gateway | 12 | upstream connect error or disconnect/reset before headers |
-| auth-service | 5 | connection refused to database:5432 |
-| web-app | 3 | OutOfMemoryError: Java heap space |
-
-Total: 20 error entries across 3 sources.
-```
-
 ## Incident Summary
 
 **Query**: "Summarize the incident with the `web-app` deployment in the `production` namespace over the last 2 hours."
@@ -275,136 +99,166 @@ Recent errors:
 Pattern detected: The errors correlate with a brief auth-service outage between 14:32 and 14:40 UTC.
 ```
 
-## Prometheus Metric Queries
+**Query**: "Summarize errors from all services in the last 2 hours."
 
-These examples assume the Prometheus connector is configured with a valid Prometheus URL. The LLM uses the `query_metrics` tool to execute PromQL queries.
-
-### Query CPU Usage
-
-**Query**: "What's the current CPU usage across all pods?"
-
-**Expected AI Response**: Argus AI calls `query_metrics` with a PromQL expression like `sum(container_cpu_usage_seconds_total) by (pod)` and returns the current values.
+**Expected AI Response**: Argus AI would use the Loki connector's `summarizeErrors` method to aggregate error logs across all services, grouped by source and message.
 
 Example Output:
 ```
-Current CPU usage across pods:
+Error Summary (Last 2 hours):
 
-| Pod | CPU Usage (cores) |
-|---|---|
-| web-app-7d8f9c6b4f-abc12 | 0.12 |
-| web-app-7d8f9c6b4f-def34 | 0.09 |
-| redis-cache-5f6g7h8i9j-ghi56 | 0.03 |
-| coredns-1234567890-abc12 | 0.01 |
+Found 47 error log entries across all services.
 
-Total: 0.25 cores across 4 pods.
+Top sources:
+  - api-gateway/production: 18 errors
+  - auth-service/production: 12 errors
+  - database/production: 9 errors
+  - worker/production: 5 errors
+  - frontend/production: 3 errors
+
+Top error messages:
+  - "ERROR: upstream connect error or disconnect/reset before headers" (15x)
+  - "ERROR: connection refused to auth-service:8080" (10x)
+  - "ERROR: query execution timeout exceeded" (7x)
+  - "ERROR: disk I/O error on /data volume" (5x)
+  - "ERROR: rate limit exceeded for client" (3x)
 ```
 
-### Query Memory Usage
+## ArgoCD Application Status
 
-**Query**: "How much memory is the web-app deployment using?"
+**Query**: "What is the status of the 'my-app-frontend' ArgoCD application?"
 
-**Expected AI Response**: Argus AI calls `query_metrics` with a PromQL expression like `sum(container_memory_usage_bytes{container="web-app"})` and returns the current value.
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getAppStatus` method to fetch the sync and health status of the specified application.
 
 Example Output:
 ```
-The web-app deployment is currently using approximately 256 MB of memory across 2 replicas.
+ArgoCD Application Status: my-app-frontend
+
+Application: my-app-frontend
+  Namespace: default
+  Sync Status: Synced
+  Health Status: Healthy
+  Revision: abc123def456
+
+The application is currently synced and healthy.
 ```
 
-### Query Request Rate
+**Query**: "Give me a summary of all ArgoCD applications."
 
-**Query**: "What's the HTTP request rate for the last 5 minutes?"
-
-**Expected AI Response**: Argus AI calls `query_metrics` with `rate(http_requests_total[5m])` and returns the current rate.
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getClusterSummary` method to get a comprehensive overview of all applications managed by ArgoCD.
 
 Example Output:
 ```
-The HTTP request rate over the last 5 minutes is approximately 42 requests/second.
+ArgoCD Cluster Summary:
+  Total applications: 8
+  Synced: 7/8
+  Healthy: 6/8
+
+Out of sync applications:
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
+
+Unhealthy applications:
+  - payment-worker (sync: Synced, health: Degraded)
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
 ```
 
-## Loki Log Queries
+## GitHub Actions Workflow Failure
 
-These examples assume the Loki connector is configured with a valid Loki URL. The LLM uses `query_logs` and `summarize_errors` tools.
+**Query**: "What caused the last failed GitHub Actions workflow run for the `ci.yml` workflow on the `main` branch of `fatoh2/argus-monitor`?"
 
-### Query Recent Logs
-
-**Query**: "Show me recent logs from the web-app service"
-
-**Expected AI Response**: Argus AI calls `query_logs` with a label selector like `app="web-app"` and returns recent log entries.
+**Expected AI Response**: Argus AI would use the GitHub Actions connector to find the latest failed run of the specified workflow and branch. It would then retrieve details about the failed job and steps, including any error messages or logs available through the GitHub API.
 
 Example Output:
 ```
-Recent logs for app="web-app":
+Last Failed GitHub Actions Workflow Run (fatoh2/argus-monitor, main branch, ci.yml):
 
-[2026-06-05T14:32:01Z] INFO  Server listening on port 8080
-[2026-06-05T14:32:02Z] INFO  Connected to database
-[2026-06-05T14:35:10Z] WARN  High memory usage: 85%
-[2026-06-05T14:36:00Z] INFO  Health check passed
+Run ID: 1234567890
+Status: Failed
+Timestamp: 2023-10-27 10:15:30 UTC
+
+Failed Job: 'build-and-test'
+Failed Step: 'Run unit tests'
+Error Message: "Error: Test suite failed: Expected 10 tests to pass, but 2 failed. See logs for details."
+
+Recommendation: Review the unit test logs for the 'build-and-test' job to identify the specific test failures.
 ```
 
-### Error Summarization
+## Multi-Connector Query
 
-**Query**: "What errors happened in the last hour?"
+**Query**: "Is there any correlation between the recent Loki error logs and the Prometheus CPU spike in the 'production' namespace?"
 
-**Expected AI Response**: Argus AI calls `summarize_errors` with a 1-hour look-back window and returns a grouped summary of error-level logs.
+**Expected AI Response**: Argus AI would query Loki for recent error logs in the 'production' namespace and Prometheus for CPU metrics over the same time period. It would then correlate the data to identify any relationships.
 
 Example Output:
 ```
-Error Summary (last 1 hour):
+Correlation Analysis: Loki Errors vs Prometheus CPU (production namespace, Last 1 hour):
 
-| Source | Count | Sample Message |
-|---|---|---|
-| auth-service | 12 | "java.lang.NullPointerException: UserAuthenticator.authenticate()" |
-| api-gateway | 5 | "HTTP 502 upstream connection refused" |
-| web-app | 3 | "OutOfMemoryError: Java heap space" |
+Loki found 23 error log entries, primarily from the 'api-gateway' service.
+Prometheus shows a CPU spike from 45% to 92% on 'api-gateway' pods between 14:30 and 14:35 UTC.
 
-Total: 20 error events across 3 services.
+The error logs show 'upstream connect timeout' errors starting at 14:31 UTC, which aligns with the CPU spike. This suggests the CPU spike was caused by a backlog of requests timing out.
+
+Recommendation: Investigate the upstream service that the api-gateway connects to. Consider increasing the upstream timeout or adding circuit breaker logic.
 ```
 
-### Scoped Error Search
+## ArgoCD Application Status
 
-**Query**: "Show me errors from the production namespace in the last 30 minutes"
+**Query**: "What is the sync status of the `my-app-frontend` ArgoCD application?"
 
-**Expected AI Response**: Argus AI calls `query_logs` with a label selector scoped to the production namespace and a level filter for "error".
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getAppStatus()` method to fetch the sync and health status of the specified application.
 
 Example Output:
 ```
-Error logs from namespace="production" (last 30 minutes):
+ArgoCD Application Status: my-app-frontend
 
-[2026-06-05T15:01:23Z] ERROR database connection timeout after 30s
-[2026-06-05T15:05:47Z] ERROR failed to process payment order #12345
-[2026-06-05T15:12:01Z] ERROR rate limit exceeded for API key sk-...abc
+  Namespace: default
+  Sync Status: Synced
+  Health Status: Healthy
+  Revision: abc123def456
 ```
 
-## Cross-Connector Incident Analysis
+## ArgoCD Cluster Summary
 
-These examples combine multiple connectors to provide comprehensive incident analysis.
+**Query**: "Give me a summary of all ArgoCD applications and their health status."
 
-### Full Incident Investigation
-
-**Query**: "What happened to the payment-service in production over the last 2 hours?"
-
-**Expected AI Response**: Argus AI orchestrates calls across Kubernetes, Prometheus, and Loki to build a complete picture.
+**Expected AI Response**: Argus AI would use the ArgoCD connector's `getClusterSummary()` method, which lists all applications and highlights any that are out of sync or unhealthy.
 
 Example Output:
 ```
-Incident Analysis: payment-service (production) — Last 2 hours
+ArgoCD Cluster Summary:
+  Total applications: 12
+  Synced: 10/12
+  Healthy: 9/12
 
-1. Kubernetes Status:
-   - Deployment: payment-service (3 replicas)
-   - Current: 3/3 ready
-   - Events: 2 pod restarts (15:03 and 15:45 UTC)
+Out of sync applications:
+  - my-app-frontend (sync: OutOfSync, health: Healthy)
+  - payment-worker (sync: OutOfSync, health: Degraded)
 
-2. Prometheus Metrics:
-   - CPU: Spiked to 85% at 15:00 UTC, now at 45%
-   - Memory: Peaked at 1.2 GB at 15:00 UTC, now at 600 MB
-   - Error rate: 5xx responses peaked at 12% at 15:00 UTC
-
-3. Loki Logs:
-   - 15:00:23 UTC — ERROR database connection pool exhausted
-   - 15:00:45 UTC — ERROR timeout waiting for connection from pool
-   - 15:03:12 UTC — WARN pod restart detected (OOMKilled)
-   - 15:45:30 UTC — ERROR connection reset by peer
-
-Root Cause: Database connection pool exhaustion triggered by a traffic surge at 15:00 UTC.
-Resolution: Automatic pod restarts and connection pool recovery. No manual intervention needed.
+Unhealthy applications:
+  - payment-worker (sync: OutOfSync, health: Degraded)
+  - database-backup (sync: Synced, health: Degraded)
 ```
+
+## Rate Limit Exceeded
+
+**Query**: (Any query sent more than 20 times in a minute)
+
+**Expected AI Response**: If you exceed the rate limit, the API returns a `429 Too Many Requests` response instead of the usual JSON. The response includes a `Retry-After` header (the authoritative source for retry timing) indicating the number of seconds to wait before retrying.
+
+Example Response (HTTP 429):
+```json
+{
+  "statusCode": 429,
+  "message": "Too Many Requests",
+  "retryAfterSeconds": 45
+}
+```
+
+> **Note**: The `Retry-After` HTTP header is the authoritative source for retry timing. The `retryAfterSeconds` field in the JSON body is provided for convenience and will always match the header value.
+
+The server also logs the event with a hashed IP address for monitoring:
+```
+Rate limit hit — IP hash: a1b2c3d4e5f6..., timeToExpire: 45000ms
+```
+
+**What to do**: Wait the number of seconds specified in the `Retry-After` header before sending another request. The limit resets on a rolling 60-second window per IP address.
