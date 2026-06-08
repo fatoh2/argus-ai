@@ -6,7 +6,7 @@ Argus AI is an intelligent assistant designed to help DevOps teams understand an
 
 - **Natural Language Queries**: Interact with your infrastructure using plain English. Ask questions like "What's the status of my web-app deployment?" or "Why did the database pod restart?"
 - **Agentic Tool Use**: The LLM autonomously decides which infrastructure systems to query via OpenAI-compatible function calling, runs the read-only connectors, and synthesizes the live results into an answer. It can chain multiple tool calls in one turn (e.g. list deployments **and** namespaces) before responding.
-- **Web Chat Dashboard**: A built-in chat UI is served at `/` (e.g. `http://localhost:3000`) — no separate frontend needed. It renders markdown tables, code blocks, and lists, shows a live health indicator, and talks to the same `/chat` endpoint.
+- **Web Chat Dashboard**: A built-in chat UI is served at `/` (e.g. `http://localhost:3000`) — no separate frontend needed. It renders full GFM markdown (tables with zebra striping, headers, ordered/unordered lists, bold/italic, inline code, and fenced code blocks), shows a live health indicator, and talks to the same `/chat` endpoint.
 - **Multi-Source Integration**: Seamlessly gathers and correlates data from various infrastructure components including Kubernetes, Prometheus, Loki, and ArgoCD.
 - **Incident Analysis**: Quickly diagnose issues by summarizing incidents, identifying potential root causes, and suggesting actionable next steps based on aggregated data.
 - **Graceful Degradation**: All connectors handle timeouts and failures gracefully — if a service is unreachable, the underlying HTTP request is cancelled via AbortController and the LLM receives a structured error and informs the user instead of crashing.
