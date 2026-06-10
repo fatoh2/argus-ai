@@ -122,12 +122,30 @@ This guide provides instructions for setting up your development environment, ru
 
     > **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. During development, you can test this by sending 21 requests within 60 seconds — the 21st should return `429 Too Many Requests` with a `Retry-After` header. Rate limit hits are logged with a hashed IP and timestamp.
 
+8.  **Chat Dashboard**:
+
+    A built-in chat dashboard is served at the root URL (`http://localhost:3000`). It provides a web UI for interacting with the `/chat` endpoint without any separate frontend build step.
+
+    The dashboard renders the model's responses as formatted HTML:
+    - **GFM tables** with zebra-striped rows and `<th>` headers
+    - **Headers** (`#` through `####`)
+    - **Ordered and unordered lists**
+    - **Bold** (`**text**`) and **italic** (`*text*`)
+    - **Inline code** and **fenced code blocks** (code blocks are extracted before other formatting to preserve their raw content)
+    - **Paragraphs** with line-break preservation
+
+    The dashboard also shows a live health indicator (green dot when the backend is reachable, red when offline) and auto-scrolls as new messages arrive.
+
+    > The dashboard is a single static HTML file (`public/index.html`) with embedded CSS and JavaScript. No build step, bundler, or framework is required.
+
 ## Project Structure
 
 ```
 scripts/
   setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
 Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
+public/
+  index.html             # Static chat dashboard (HTML/CSS/JS) — served at /
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
 docker/
   prometheus/
