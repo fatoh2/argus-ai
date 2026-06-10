@@ -47,6 +47,24 @@ gemini:
 ```
 
 
+
+### `redis`
+
+Configuration for Redis (required for queue/job processing via BullMQ).
+
+- `url`: Redis connection string. Includes password when auth is enabled.
+- `password`: Redis AUTH password. **Change this in production.**
+
+Example:
+
+```yaml
+redis:
+  url: "redis://:argus-redis-local@localhost:6379"
+  password: "${REDIS_PASSWORD}"
+```
+
+> **Security**: The default `docker-compose.yml` binds Redis to `127.0.0.1:6379` (localhost only) and requires password authentication. In production, always set a strong `REDIS_PASSWORD` and never expose Redis to the public internet.
+
 ### `kubernetes`
 
 Configuration for the Kubernetes connector.

@@ -12,8 +12,10 @@ and optionally argus-monitor's database.
 - **Config**: `@nestjs/config` (ConfigModule) — environment variables + `config.yaml`
 - **Validation**: `class-validator` + global `ValidationPipe` (whitelist, forbidNonWhitelisted)
 - **Rate Limiting**: `@nestjs/throttler` + custom `ChatRateLimitGuard` (20 req/min/IP)
+- **Queue/Jobs**: BullMQ + Redis 7 (password auth, localhost-only binding)
 - **Testing**: Jest + `@nestjs/testing` with mocked `ConfigService`
 - **Local Dev**: Docker Compose (`docker-compose.dev.yml`) with Prometheus, Loki, Grafana
+- **Production Services**: `docker-compose.yml` with Redis 7 (password-protected, localhost-only), Prometheus, Loki, Promtail, Grafana, and argus-ai
 - **Dev Shortcuts**: `Makefile` with `make up`, `make down`, `make check`, `make test`, `make chat`, `make health`, `make logs`
 
 ## Standing Rules
@@ -23,10 +25,13 @@ The `.gitignore` includes `argus-ai/` to prevent accidental nested clones. If yo
 
 ## Repo Structure
 ```
+docker-compose.yml         # Production stack: Redis 7 (password auth, localhost-only) + Prometheus + Loki + Promtail + Grafana + argus-ai
 docker-compose.dev.yml     # Local dev stack: argus-ai + Prometheus + Loki + Grafana
 scripts/
   setup.sh              # One-command local setup (prerequisites, .env, deps, Docker images)
 Makefile                   # Dev command shortcuts (make up, make check, make test, etc.)
+public/
+  index.html             # Static chat dashboard (HTML/CSS/JS) — served at /
 docker/
   prometheus/
     prometheus.yml         # Prometheus config — scrapes itself + argus-ai
@@ -66,6 +71,7 @@ src/
     deepseek/             # DeepSeek V3 API client (primary LLM)
     gemini/               # Google Gemini API client (optional fallback)
 config.example.yaml       # Template — copy to config.yaml, never commit config.yaml
+.env.example              # Template — copy to .env, fill in secrets
 ```
 
 ## Connector Architecture

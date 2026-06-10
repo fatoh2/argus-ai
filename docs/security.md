@@ -35,6 +35,8 @@ This document outlines the security considerations and best practices for deploy
 - The dev stack uses default passwords and no TLS — it is intentionally insecure for ease of use.
 - For production, use the production Helm chart with proper authentication, TLS, and network policies.
 
+
+
 ## 2. User Query Security (Prompt Injection Prevention)
 
 ### Robust Input Sanitization
@@ -122,6 +124,34 @@ Error messages are sanitized before logging — the original error message is pa
 - LLM calls have a **30-second hard timeout** enforced via `Promise.race`.
 - Timeout errors are NOT retried — they fail fast with `504 Gateway Timeout`.
 - This prevents a malicious or buggy prompt from holding the LLM connection indefinitely.
+
+### Redis Security
+
+Argus AI uses Redis for queue/job processing (BullMQ). The Redis configuration has been hardened with the following security measures:
+
+#### Password Authentication
+- Redis is configured with a **required password** set via the `REDIS_PASSWORD` environment variable.
+- The `docker-compose.yml` passes the password to Redis using `--requirepass "${REDIS_PASSWORD:-argus-redis-local}"`.
+- The `REDIS_URL` includes the password in the connection string: `redis://:${REDIS_PASSWORD}@localhost:6379`.
+- The healthcheck uses `redis-cli -a "${REDIS_PASSWORD}" ping` to authenticate before checking liveness.
+
+> **⚠️ Production Warning**: The default password `argus-redis-local` is for local development only. **You MUST change `REDIS_PASSWORD` to a strong, unique value in production.** Set it via the `REDIS_PASSWORD` environment variable or your secrets management system.
+
+#### Localhost-Only Binding
+- Redis is bound **exclusively to `127.0.0.1:6379`** (localhost) in the Docker Compose configuration.
+- The port mapping `127.0.0.1:6379:6379` ensures Redis is **not accessible from external hosts** — only the argus-ai container and the Docker host can reach it.
+- This prevents unauthorized network access to the Redis instance from outside the host machine.
+
+#### Container-to-Container Communication
+- The `argus-ai` service connects to Redis via the Docker internal network using `redis://redis:6379` (no password needed within the Docker network because the services are on an isolated bridge network).
+- The password-authenticated `REDIS_URL` is used when connecting from outside Docker (e.g., running the NestJS app directly on the host during development).
+
+#### Production Deployment
+- In production (Kubernetes), Redis should be deployed with:
+  - A **strong, randomly generated password** stored in a Kubernetes Secret
+  - **Network policies** restricting access to only the argus-ai pods
+  - **TLS encryption** for Redis connections if traversing a network
+  - **Persistent storage** with appropriate backup policies
 
 ## 5. Deployment Security
 

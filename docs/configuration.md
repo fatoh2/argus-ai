@@ -23,6 +23,8 @@ The `ConfigModule` is registered globally in `app.module.ts` with `isGlobal: tru
 | `ARGOCD_TOKEN` | Authentication token for ArgoCD | No | — |
 | `GITHUB_TOKEN` | Personal Access Token (PAT) for GitHub, with `workflow` scope | No | — |
 | `ARGUS_MONITOR_DB_URL` | Database connection string for the Argus Monitor (read-only replica) | No | — |
+| `REDIS_URL` | Redis connection string (used for queue/job processing). Includes password when auth is enabled. | No | `redis://:argus-redis-local@localhost:6379` |
+| `REDIS_PASSWORD` | Redis password. **Change this in production.** | No | `argus-redis-local` |
 
 > **Note**: `ARGOCD_AUTH_TOKEN` was renamed to `ARGOCD_TOKEN`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `ARGOCD_TOKEN`.
 > **Note**: `KUBECONFIG_PATH` was renamed to `KUBECONFIG`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `KUBECONFIG`.
@@ -37,6 +39,18 @@ The LLM service (`LlmService`) is configurable via environment variables:
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | `30000` |
 | `LLM_MAX_TOKENS` | Maximum estimated tokens before oldest history is truncated | `50000` |
 | `LLM_MAX_RETRIES` | Number of retry attempts on 5xx LLM server errors | `1` |
+
+
+## Redis Configuration
+
+Argus AI uses Redis for queue and job processing (via BullMQ). Redis is configured via environment variables:
+
+| Variable | Description | Default |
+|---|---|---|
+| `REDIS_URL` | Full Redis connection string including password | `redis://:argus-redis-local@localhost:6379` |
+| `REDIS_PASSWORD` | Redis AUTH password | `argus-redis-local` |
+
+> **Security**: In production, always set a strong, unique `REDIS_PASSWORD` and ensure Redis binds only to `127.0.0.1` (localhost) or use a private network. The default `docker-compose.yml` binds Redis to `127.0.0.1:6379` and requires a password for all connections.
 
 ## Connector Configuration
 
