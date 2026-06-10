@@ -1,36 +1,17 @@
 # Configuration
 
-Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) for configuration management. Settings are loaded from environment variables (highest priority) and `config.yaml` (defaults).
-
-## Configuration Loading Order
+Argus AI uses **NestJS ConfigModule** (`@nestjs/config`) for configuration management. Settings are loaded from:
 
 1. **Environment variables** (highest priority) — set in your shell or a `.env` file
 2. **`config.yaml`** — for non-sensitive defaults and connector endpoint URLs
 
-The `ConfigModule` is registered globally in `app.module.ts`:
-
-```typescript
-ConfigModule.forRoot({
-  isGlobal: true,
-  envFilePath: '.env',
-})
-```
-
-This means all services can inject `ConfigService` directly without importing `ConfigModule` in each feature module.
+The `ConfigModule` is registered globally in `app.module.ts` with `isGlobal: true`, making `ConfigService` available to all modules without additional imports.
 
 ## Environment Variables
 
-Argus AI uses environment variables for sensitive information and flexible configuration. It's highly recommended to use a `.env` file for local development or your deployment environment's secret management system (e.g., Kubernetes Secrets, AWS Secrets Manager) for production.
-
-**Never commit `config.yaml` or `.env` files containing sensitive information to Git!**
-
-Here's a list of environment variables used:
-
 | Variable | Description | Required | Default |
 |---|---|---|---|
-| `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | **Yes** | — |
-| `DEEPSEEK_MODEL` | DeepSeek model override (optional) | No | `deepseek-chat` |
-| `DEEPSEEK_URL` | DeepSeek API endpoint override (optional) | No | `https://api.deepseek.com/chat/completions` |
+| `DEEPSEEK_API_KEY` | DeepSeek V3 API key (primary LLM) | Yes | — |
 | `GEMINI_API_KEY` | Google Gemini API key (optional fallback) | No | — |
 | `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | No | `30000` |
 | `LLM_MAX_TOKENS` | Maximum estimated tokens before oldest history is truncated | No | `50000` |
@@ -53,46 +34,11 @@ The LLM service (`LlmService`) is configurable via environment variables:
 
 | Variable | Description | Default |
 |---|---|---|
-| `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | `30000` (30s) |
+| `LLM_TIMEOUT_MS` | Hard timeout for LLM calls in milliseconds | `30000` |
 | `LLM_MAX_TOKENS` | Maximum estimated tokens before oldest history is truncated | `50000` |
-| `LLM_MAX_RETRIES` | Number of retry attempts on 5xx server errors | `1` |
+| `LLM_MAX_RETRIES` | Number of retry attempts on 5xx LLM server errors | `1` |
 
-### LLM Error Handling
-
-The LLM service maps errors to appropriate HTTP status codes:
-
-| Condition | HTTP Status | Response Body |
-|---|---|---|
-| Timeout (exceeds `LLM_TIMEOUT_MS`) | `504 Gateway Timeout` | `{ statusCode: 504, message: "LLM request timed out", error: "Gateway Timeout" }` |
-| Rate limit / quota exceeded | `429 Too Many Requests` | `{ statusCode: 429, message: "LLM rate limit exceeded", error: "Too Many Requests" }` |
-| Auth failure (invalid API key) | `401 Unauthorized` | `{ statusCode: 401, message: "LLM authentication failed", error: "Unauthorized" }` |
-| Server error (all retries exhausted) | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service unavailable after retries", error: "Bad Gateway" }` |
-| Generic LLM error | `502 Bad Gateway` | `{ statusCode: 502, message: "LLM service error", error: "Bad Gateway" }` |
-
-### Health Check
-
-The `GET /health/llm` endpoint (in `LlmController`) returns:
-
-```json
-{
-  "ok": true,
-  "latencyMs": 1234
-}
-```
-
-On failure, `ok` is `false` and `latencyMs` reflects the time until the health check timed out (10s internal timeout).
-
-### Token Estimation
-
-Token count is estimated using a simple heuristic: `Math.ceil(text.length / 4)`. This is a rough approximation for English text — not a precise tokenizer.
-
-### Conversation Truncation
-
-When the estimated token count exceeds `LLM_MAX_TOKENS`, the oldest messages in the conversation history are removed first, keeping the most recent context.
-
-## Connector Setup
-
-Detailed setup instructions for each connector.
+## Connector Configuration
 
 ### Kubernetes Connector Setup
 
@@ -101,6 +47,13 @@ The Kubernetes connector can operate in two modes:
 1.  **In-cluster (Recommended for Production)**: When Argus AI is deployed inside a Kubernetes cluster, it will automatically use the service account credentials assigned to its pod.
     -   Ensure the service account has appropriate read-only permissions (e.g., `get`, `list`, `watch` for pods, deployments, events).
     -   **Do not set `KUBECONFIG`** in your environment variables if deploying in-cluster.
+
+2.  **Out-of-cluster (Recommended for Local Development)**: For local development, you can point Argus AI to an existing kubeconfig file.
+    -   Set the `KUBECONFIG` environment variable or add it to your `.env` file.
+    -   The path supports `~` expansion and environment variable references (e.g., `${HOME}/.kube/config`).
+    > **Deprecation note**: `KUBECONFIG_PATH` was renamed to `KUBECONFIG`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `KUBECONFIG`.
+
+**Setup steps**:
 
 2.  **Out-of-cluster (Recommended for Local Development)**: For local development, you can point Argus AI to an existing kubeconfig file.
     -   Set the `KUBECONFIG` environment variable or add it to your `.env` file.

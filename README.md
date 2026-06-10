@@ -60,7 +60,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     > **Note**: If you prefer to configure things manually, follow steps 4–6 instead.
 
 4.  **Configure your connectors**:
-    Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector configurations.
+    Copy `config.example.yaml` to `config.yaml`. This file defines the structure for your connector endpoints and credentials. Edit the values to match your infrastructure.
     ```bash
     cp config.example.yaml config.yaml
     ```
@@ -69,12 +69,19 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
 
     For a quick start with Kubernetes, Prometheus, and Loki, ensure your `config.yaml` has the correct URLs (e.g., for Prometheus and Loki if they are not on localhost) and any necessary authentication details. For Kubernetes, if running in-cluster, you should remove or comment out the `kubeconfig_path` line.
 
-5.  **Install dependencies**:
+5.  **Set environment variables**:
+    Copy `.env.example` to `.env` and fill in your API keys and connector URLs:
+    ```bash
+    cp .env.example .env
+    ```
+    At minimum, set `DEEPSEEK_API_KEY` to your DeepSeek V3 API key. All connectors are optional — leave their URLs blank to run in offline mode (the LLM will report them as unavailable).
+
+6.  **Install dependencies**:
     ```bash
     npm install
     ```
 
-6.  **Run locally (for development/testing)**:
+7.  **Run locally (for development/testing)**:
 
     **Option A — Makefile (recommended, includes full observability stack)**:
     ```bash
@@ -104,7 +111,7 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     ```
     This will start the NestJS backend alone, typically on `http://localhost:3000`. You will need a separate Prometheus and Loki instance.
 
-7.  **Start Querying!**
+    **Start Querying!**
     Once the backend is running, you can interact with Argus AI via its API (e.g., using `curl` or a simple client). For example, to query your Kubernetes cluster:
 
     ```bash
@@ -116,6 +123,9 @@ This guide will help any DevOps team point Argus AI at their Prometheus+Loki+K8s
     **Note**: The `/chat` endpoint is rate-limited to 20 requests per minute per IP. If you exceed this limit, you will receive a `429 Too Many Requests` response with a `Retry-After` header.
 
     Refer to [Example Queries](docs/examples.md) for more example queries.
+
+
+    Or open `http://localhost:3000` in your browser for the built-in chat dashboard.
 
 ## Configuration
 
@@ -147,6 +157,31 @@ Key environment variables:
 > - `KUBECONFIG_PATH` was renamed to `KUBECONFIG`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `KUBECONFIG`.
 > - `ARGOCD_AUTH_TOKEN` was renamed to `ARGOCD_TOKEN`. The old name is still supported with a deprecation warning but will be removed in a future release. Please migrate to `ARGOCD_TOKEN`.
 
+## Project Structure
+
+```
+argus-ai/
+├── src/
+│   ├── app.module.ts              # Root module (ConfigModule, LLM, connectors)
+│   ├── main.ts                    # Bootstrap, CORS, global pipes, shutdown hooks
+│   ├── chat/                      # Chat module (controller, service, DTOs)
+│   ├── connectors/                # Infrastructure connectors (K8s, Prometheus, Loki, ArgoCD)
+│   │   ├── kubernetes.connector.ts
+│   │   ├── prometheus/
+│   │   └── ...
+│   ├── llm/                       # LLM integration (DeepSeek, Gemini, tool dispatch)
+│   ├── health/                    # Health check endpoints
+│   └── common/                    # Shared utilities (redact, sanitize, rate-limit)
+├── public/                        # Static chat dashboard (HTML/CSS/JS)
+├── docker/                        # Docker configs (Prometheus, Loki, Promtail)
+├── docs/                          # Documentation
+├── scripts/                       # Setup and utility scripts
+├── config.example.yaml            # Example connector configuration
+├── docker-compose.yml             # Main Docker Compose (app + observability stack)
+├── docker-compose.dev.yml         # Dev Docker Compose (observability stack only)
+├── Makefile                       # Common dev commands
+└── CLAUDE.md                      # AI agent instructions
+```
 
 ## Architecture
 

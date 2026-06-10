@@ -59,6 +59,16 @@ This guide provides instructions for setting up your development environment, ru
     # Edit .env — set DEEPSEEK_API_KEY=your-key-here
     ```
 
+    To enable Kubernetes tool-use, set `KUBECONFIG` in your `.env`:
+    ```
+    KUBECONFIG=/path/to/your/kubeconfig
+    ```
+
+    To enable ArgoCD tool-use, set `ARGOCD_URL` and `ARGOCD_TOKEN` in your `.env`:
+    ```
+    ARGOCD_URL=https://argocd.example.com
+    ARGOCD_TOKEN=your-argocd-token
+    ```
 6.  **Run Locally with Docker Compose**:
 
     The `docker-compose.dev.yml` file provides a complete local observability stack so you can test connectors without a real Kubernetes cluster.
